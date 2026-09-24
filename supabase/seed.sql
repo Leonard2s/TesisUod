@@ -1,0 +1,48 @@
+-- ============================================================
+-- Tesis UOD - Datos de prueba para la tabla public.encuestas
+-- Ejecutar en: Supabase Dashboard -> SQL Editor
+-- Son respuestas ficticias con distribución plausible para ver
+-- las estadísticas funcionando. Borra o ajusta según necesites.
+-- ============================================================
+
+insert into public.encuestas
+  (created_at, frecuencia_automedicacion, rango_edad, genero, antibioticos,
+   sintomas, grado_educacion, lugar_residencia, motivo_automedicacion,
+   registrado_nombre, registrado_matricula)
+values
+  ('2026-09-01T10:00:00Z', 'Rara vez',       'De 18 a 29 años',  'Mujer',  '{Amoxicilina}',               '{Dolor,Sarro}',               'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-01T11:20:00Z', 'Frecuentemente', 'De 40 a 49 años',  'Hombre', '{Azitromicina,Metronidazol}', '{Inflamación,Dolor}',         'Nivel secundario', 'Barrio',                  'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-02T09:15:00Z', 'Nunca',          'De 60 años o más', 'Mujer',  '{}',                         '{Sangrado}',                  'Nivel primario',   'Campo de una provincia',  'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-02T14:40:00Z', 'Rara vez',       'De 30 a 39 años',  'Mujer',  '{Amoxicilina,Cefalexina}',    '{Sarro}',                     'Universitario',    'Urbanización',            'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-03T08:30:00Z', 'Frecuentemente', 'De 50 a 59 años',  'Hombre', '{Metronidazol}',              '{Dolor,Movilidad dental}',    'Nivel secundario', 'Pueblo de una provincia', 'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-03T16:10:00Z', 'Rara vez',       'De 18 a 29 años',  'Hombre', '{Azitromicina}',              '{Inflamación}',               'Especialidad',     'Residencial',             'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-04T10:25:00Z', 'Nunca',          'De 30 a 39 años',  'Mujer',  '{}',                         '{Sangrado,Sarro}',            'Nivel secundario', 'Barrio',                  'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-04T12:00:00Z', 'Frecuentemente', 'De 40 a 49 años',  'Mujer',  '{Amoxicilina}',               '{Dolor}',                     'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-05T09:45:00Z', 'Rara vez',       'De 50 a 59 años',  'Mujer',  '{Amoxicilina}',               '{Sangrado,Dolor}',            'Nivel secundario', 'Pueblo de una provincia', 'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-05T15:30:00Z', 'Rara vez',       'De 18 a 29 años',  'Mujer',  '{Amoxicilina}',               '{Dolor}',                     'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-06T11:10:00Z', 'Frecuentemente', 'De 30 a 39 años',  'Hombre', '{Metronidazol,Amoxicilina}',  '{Inflamación,Sarro}',         'Nivel secundario', 'Barrio',                  'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-07T10:05:00Z', 'Rara vez',       'De 40 a 49 años',  'Mujer',  '{Azitromicina}',              '{Dolor,Sangrado}',            'Universitario',    'Residencial',             'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-07T13:50:00Z', 'Nunca',          'De 50 a 59 años',  'Mujer',  '{}',                         '{Sarro}',                     'Nivel primario',   'Campo de una provincia',  'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-08T09:20:00Z', 'Rara vez',       'De 18 a 29 años',  'Hombre', '{Amoxicilina}',               '{Inflamación,Dolor}',         'Nivel secundario', 'Urbanización',            'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-08T16:40:00Z', 'Frecuentemente', 'De 60 años o más', 'Mujer',  '{Amoxicilina,Metronidazol}',  '{Dolor,Movilidad dental}',    'Nivel secundario', 'Barrio',                  'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-09T10:30:00Z', 'Rara vez',       'De 30 a 39 años',  'Mujer',  '{Cefalexina}',                '{Sarro,Sangrado}',            'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-09T14:15:00Z', 'Rara vez',       'De 40 a 49 años',  'Mujer',  '{Amoxicilina}',               '{Dolor}',                     'Nivel secundario', 'Pueblo de una provincia', 'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-10T08:50:00Z', 'Frecuentemente', 'De 18 a 29 años',  'Mujer',  '{Azitromicina}',              '{Inflamación}',               'Universitario',    'Residencial',             'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-10T12:35:00Z', 'Nunca',          'De 40 a 49 años',  'Hombre', '{}',                         '{Sangrado}',                  'Nivel primario',   'Campo de una provincia',  'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-11T09:05:00Z', 'Rara vez',       'De 50 a 59 años',  'Mujer',  '{Metronidazol}',              '{Dolor,Sarro}',               'Nivel secundario', 'Barrio',                  'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-11T15:55:00Z', 'Frecuentemente', 'De 30 a 39 años',  'Mujer',  '{Amoxicilina}',               '{Inflamación,Dolor}',         'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-12T10:45:00Z', 'Rara vez',       'De 18 a 29 años',  'Mujer',  '{Amoxicilina,Cefalexina}',    '{Sarro}',                     'Nivel secundario', 'Urbanización',            'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-12T13:25:00Z', 'Nunca',          'De 60 años o más', 'Mujer',  '{}',                         '{Movilidad dental,Sangrado}', 'Nivel primario',   'Pueblo de una provincia', 'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-13T09:35:00Z', 'Rara vez',       'De 30 a 39 años',  'Hombre', '{Azitromicina,Amoxicilina}',  '{Dolor,Inflamación}',         'Especialidad',     'Residencial',             'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-13T16:20:00Z', 'Frecuentemente', 'De 40 a 49 años',  'Mujer',  '{Metronidazol}',              '{Dolor}',                     'Nivel secundario', 'Barrio',                  'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-14T11:00:00Z', 'Rara vez',       'De 50 a 59 años',  'Mujer',  '{Amoxicilina}',               '{Sangrado}',                  'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-14T14:45:00Z', 'Rara vez',       'De 18 a 29 años',  'Hombre', '{Amoxicilina}',               '{Dolor,Sarro}',               'Nivel secundario', 'Pueblo de una provincia', 'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-15T10:15:00Z', 'Frecuentemente', 'De 30 a 39 años',  'Mujer',  '{Azitromicina,Metronidazol}', '{Inflamación,Dolor,Sarro}',   'Universitario',    'Urbanización',            'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-15T13:40:00Z', 'Nunca',          'De 30 a 39 años',  'Mujer',  '{}',                         '{Sarro}',                     'Nivel secundario', 'Residencial',             'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-16T09:25:00Z', 'Rara vez',       'De 40 a 49 años',  'Mujer',  '{Cefalexina,Amoxicilina}',    '{Sangrado,Dolor}',            'Universitario',    'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-16T15:10:00Z', 'Frecuentemente', 'De 50 a 59 años',  'Hombre', '{Amoxicilina}',               '{Dolor,Movilidad dental}',    'Nivel primario',   'Campo de una provincia',  'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-17T10:50:00Z', 'Rara vez',       'De 60 años o más', 'Mujer',  '{Metronidazol}',              '{Sangrado,Sarro}',            'Nivel secundario', 'Barrio',                  'Recomendación de tercera persona',      'Carga inicial', 'seed'),
+  ('2026-09-17T14:30:00Z', 'Frecuentemente', 'De 18 a 29 años',  'Mujer',  '{Azitromicina}',              '{Inflamación,Dolor}',         'Universitario',    'Residencial',             'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-18T11:15:00Z', 'Rara vez',       'De 30 a 39 años',  'Mujer',  '{Amoxicilina}',               '{Dolor}',                     'Especialidad',     'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
+  ('2026-09-18T16:05:00Z', 'Nunca',          'De 50 a 59 años',  'Hombre', '{}',                         '{Sarro,Inflamación}',         'Nivel secundario', 'Urbanización',            'Por prevención',                        'Carga inicial', 'seed'),
+  ('2026-09-19T09:55:00Z', 'Frecuentemente', 'De 40 a 49 años',  'Mujer',  '{Amoxicilina,Metronidazol}',  '{Dolor,Sangrado}',            'Nivel secundario', 'Pueblo de una provincia', 'Recomendación de tercera persona',      'Carga inicial', 'seed');

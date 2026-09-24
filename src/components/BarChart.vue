@@ -20,6 +20,8 @@ const props = defineProps({
   datasets: { type: Array, required: true },
   titulo: { type: String, default: '' },
   sufijo: { type: String, default: '' },
+  // Si es true, cada barra toma un color distinto de la paleta
+  multicolor: { type: Boolean, default: false },
 })
 
 const chartData = computed(() => ({
@@ -27,7 +29,9 @@ const chartData = computed(() => ({
   datasets: props.datasets.map((d, i) => ({
     label: d.label,
     data: d.data,
-    backgroundColor: d.color ?? PALETA[i % PALETA.length],
+    backgroundColor: props.multicolor
+      ? props.labels.map((_, j) => PALETA[j % PALETA.length])
+      : d.color ?? PALETA[i % PALETA.length],
     borderRadius: 6,
     maxBarThickness: 38,
   })),

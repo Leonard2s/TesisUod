@@ -3,30 +3,40 @@ import { computed, onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabaseClient'
 import PieChart from '../components/PieChart.vue'
 import BarChart from '../components/BarChart.vue'
+import {
+  FRECUENCIAS,
+  RANGOS_EDAD,
+  GENEROS,
+  ANTIBIOTICOS,
+  SINTOMAS,
+  GRADOS_EDUCACION,
+  LUGARES_RESIDENCIA,
+  MOTIVOS,
+} from '../lib/opciones'
 
-const bacterias = ref([])
 const encuestas = ref([])
 const cargando = ref(true)
 const errorMsg = ref('')
 
 async function cargar() {
   cargando.value = true
-  const [{ data: b, error: eb }, { data: e, error: ee }] = await Promise.all([
-    supabase.from('resultados_bacterias').select('*').order('id'),
-    supabase.from('encuestas').select('*').is('deleted_at', null),
-  ])
+  const { data, error } = await supabase
+    .from('encuestas')
+    .select('*')
+    .is('deleted_at', null)
   cargando.value = false
 
-  if (eb || ee) {
-    errorMsg.value = 'No se pudieron cargar los datos: ' + (eb ?? ee).message
+  if (error) {
+    errorMsg.value = 'No se pudieron cargar los datos: ' + error.message
     return
   }
-  bacterias.value = b ?? []
-  encuestas.value = e ?? []
+  encuestas.value = data ?? []
 }
 
-// Cuenta ocurrencias de un campo; si el campo es un arreglo cuenta cada elemento.
-function contarPor(items, clave) {
+// Cuenta ocurrencias de un campo; si el campo es un arreglo cuenta cada
+// elemento. Con `orden` las etiquetas siguen el orden del cuestionario;
+// sin él se ordenan de mayor a menor frecuencia.
+function contarPor(items, clave, orden = null) {
   const conteo = {}
   for (const item of items) {
     const valor = item[clave]
@@ -34,66 +44,186 @@ function contarPor(items, clave) {
       if (v) conteo[v] = (conteo[v] ?? 0) + 1
     }
   }
-  const entradas = Object.entries(conteo).sort((a, b) => b[1] - a[1])
+  let entradas = Object.entries(conteo)
+  if (orden) {
+    entradas.sort((a, b) => {
+      const ia = orden.indexOf(a[0])
+      const ib = orden.indexOf(b[0])
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+  } else {
+    entradas.sort((a, b) => b[1] - a[1])
+  }
   return {
     labels: entradas.map(([k]) => k),
     values: entradas.map(([, v]) => v),
   }
 }
 
+function topDe(clave) {
+  const { labels, values } = contarPor(encuestas.value, clave)
+  return labels.length ? { nombre: labels[0], cantidad: values[0] } : null
+}
+
 const stats = computed(() => {
-  const bs = bacterias.value
-  const reduccionProm = bs.length
-    ? (
-        bs.reduce((acc, b) => acc + (Number(b.antes_tratamiento) - Number(b.despues_tratamiento)), 0) /
-        bs.length
-      ).toFixed(1)
-    : '0'
-  const top = bs.length
-    ? [...bs].sort((a, b) => Number(b.despues_tratamiento) - Number(a.despues_tratamiento))[0]
-    : null
+  const n = encuestas.value.length
+  const nunca = encuestas.value.filter(
+    (e) => e.frecuencia_automedicacion === 'Nunca'
+  ).length
+  const pctAutomedican = n ? Math.round(((n - nunca) / n) * 100) + ' %' : '—'
+  const antibiotico = topDe('antibioticos')
+  const sintoma = topDe('sintomas')
+
   return [
-    { titulo: 'Respuestas', valor: encuestas.value.length, detalle: 'encuestas registradas' },
-    { titulo: 'Bacterias', valor: bs.length, detalle: 'especies monitoreadas' },
-    { titulo: 'Reducción prom.', valor: reduccionProm + ' %', detalle: 'tras el tratamiento' },
-    { titulo: 'Mayor presencia', valor: top ? top.despues_tratamiento + ' %' : '—', detalle: top?.bacteria ?? 'sin datos' },
+    { titulo: 'Respuestas', valor: n, detalle: 'encuestas registradas' },
+    { titulo: 'Se automedican', valor: pctAutomedican, detalle: 'rara vez o frecuentemente' },
+    {
+      titulo: 'Antibiótico más usado',
+      valor: antibiotico?.nombre ?? '—',
+      detalle: antibiotico ? antibiotico.cantidad + ' menciones' : 'sin datos',
+    },
+    {
+      titulo: 'Síntoma más frecuente',
+      valor: sintoma?.nombre ?? '—',
+      detalle: sintoma ? sintoma.cantidad + ' menciones' : 'sin datos',
+    },
   ]
 })
 
-const pieDespues = computed(() => ({
-  labels: bacterias.value.map((b) => b.bacteria),
-  values: bacterias.value.map((b) => Number(b.despues_tratamiento)),
-}))
+const pieFrecuencia = computed(() =>
+  contarPor(encuestas.value, 'frecuencia_automedicacion', FRECUENCIAS)
+)
 
-const barrasComparativo = computed(() => ({
-  labels: bacterias.value.map((b) => b.bacteria),
-  datasets: [
-    {
-      label: 'Antes del tratamiento',
-      data: bacterias.value.map((b) => Number(b.antes_tratamiento)),
-      color: '#cbd5e1',
-    },
-    {
-      label: 'Después del tratamiento',
-      data: bacterias.value.map((b) => Number(b.despues_tratamiento)),
-      color: '#0d9488',
-    },
-  ],
-}))
+const pieGenero = computed(() =>
+  contarPor(encuestas.value, 'genero', GENEROS)
+)
 
-const preguntasEncuesta = [
-  { titulo: '1. Frecuencia de automedicación', clave: 'frecuencia_automedicacion' },
-  { titulo: '2. Rango de edad', clave: 'rango_edad' },
-  { titulo: '3. Género', clave: 'genero' },
-  { titulo: '4. Antibióticos usados', clave: 'antibioticos' },
-  { titulo: '5. Síntomas notados', clave: 'sintomas' },
-  { titulo: '6. Grado de educación', clave: 'grado_educacion' },
-  { titulo: '7. Lugar de residencia', clave: 'lugar_residencia' },
-  { titulo: '8. Motivo de automedicación', clave: 'motivo_automedicacion' },
+const preguntasBarras = [
+  { titulo: 'Rango de edad', clave: 'rango_edad', orden: RANGOS_EDAD },
+  { titulo: 'Antibióticos usados', clave: 'antibioticos', orden: ANTIBIOTICOS },
+  { titulo: 'Síntomas notados', clave: 'sintomas', orden: SINTOMAS },
+  { titulo: 'Grado de educación', clave: 'grado_educacion', orden: GRADOS_EDUCACION },
+  { titulo: 'Lugar de residencia', clave: 'lugar_residencia', orden: LUGARES_RESIDENCIA },
+  { titulo: 'Motivo de automedicación', clave: 'motivo_automedicacion', orden: MOTIVOS },
 ]
 
 const graficasEncuesta = computed(() =>
-  preguntasEncuesta.map((p) => ({ ...p, ...contarPor(encuestas.value, p.clave) }))
+  preguntasBarras.map((p) => ({
+    ...p,
+    ...contarPor(encuestas.value, p.clave, p.orden),
+  }))
+)
+
+// ---------- Medidas estadísticas ----------
+// La edad se captura por rangos; para la media se usa el punto medio de
+// cada rango y para mediana/moda el rango correspondiente.
+const PUNTOS_MEDIOS_EDAD = {
+  'De 18 a 29 años': 23.5,
+  'De 30 a 39 años': 34.5,
+  'De 40 a 49 años': 44.5,
+  'De 50 a 59 años': 54.5,
+  'De 60 años o más': 65,
+}
+
+// Compara las respuestas de la mitad reciente del periodo contra la
+// primera mitad para describir el ritmo de registro.
+const tendencia = computed(() => {
+  const fechas = encuestas.value
+    .map((e) => new Date(e.created_at).getTime())
+    .filter((t) => !Number.isNaN(t))
+    .sort((a, b) => a - b)
+  if (fechas.length < 2) {
+    return { etiqueta: 'Sin datos', detalle: 'se necesitan más respuestas' }
+  }
+
+  const mitad = fechas[0] + (fechas[fechas.length - 1] - fechas[0]) / 2
+  const antes = fechas.filter((t) => t < mitad).length
+  const despues = fechas.length - antes
+  const detalle = `${despues} de ${fechas.length} respuestas en la mitad reciente`
+  if (despues > antes) return { etiqueta: '↗ Creciente', detalle }
+  if (despues < antes) return { etiqueta: '↘ Decreciente', detalle }
+  return { etiqueta: '→ Estable', detalle: 'mismo ritmo de respuestas' }
+})
+
+const medidas = computed(() => {
+  const n = encuestas.value.length
+  if (!n) return []
+
+  const mediaEdad =
+    encuestas.value.reduce(
+      (acc, e) => acc + (PUNTOS_MEDIOS_EDAD[e.rango_edad] ?? 0),
+      0
+    ) / n
+
+  // Mediana: primer rango donde la frecuencia acumulada llega a n/2
+  const conteoEdad = contarPor(encuestas.value, 'rango_edad', RANGOS_EDAD)
+  let acumulado = 0
+  let medianaEdad = '—'
+  for (let i = 0; i < conteoEdad.labels.length; i++) {
+    acumulado += conteoEdad.values[i]
+    if (acumulado >= n / 2) {
+      medianaEdad = conteoEdad.labels[i]
+      break
+    }
+  }
+  const modaEdad = topDe('rango_edad')
+
+  return [
+    { titulo: 'Media de edad', valor: '~' + mediaEdad.toFixed(1) + ' años', detalle: 'por puntos medios de rango' },
+    { titulo: 'Mediana de edad', valor: medianaEdad, detalle: 'rango central' },
+    { titulo: 'Moda de edad', valor: modaEdad?.nombre ?? '—', detalle: modaEdad ? modaEdad.cantidad + ' respuestas' : 'sin datos' },
+    { titulo: 'Tendencia', valor: tendencia.value.etiqueta, detalle: tendencia.value.detalle },
+  ]
+})
+
+// Respuestas agrupadas por mes para la gráfica de tendencia
+const respuestasPorMes = computed(() => {
+  const conteo = {}
+  for (const e of encuestas.value) {
+    const d = new Date(e.created_at)
+    if (Number.isNaN(d.getTime())) continue
+    const clave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    conteo[clave] = (conteo[clave] ?? 0) + 1
+  }
+  const claves = Object.keys(conteo).sort()
+  return {
+    labels: claves.map((c) =>
+      new Date(c + '-02T00:00:00').toLocaleDateString('es-DO', {
+        month: 'short',
+        year: 'numeric',
+      })
+    ),
+    values: claves.map((c) => conteo[c]),
+  }
+})
+
+// ---------- Tablas de frecuencia ----------
+const preguntasTabla = [
+  { titulo: '1. Frecuencia de automedicación', clave: 'frecuencia_automedicacion', orden: FRECUENCIAS },
+  { titulo: '2. Rango de edad', clave: 'rango_edad', orden: RANGOS_EDAD },
+  { titulo: '3. Género', clave: 'genero', orden: GENEROS },
+  { titulo: '4. Antibióticos usados', clave: 'antibioticos', orden: ANTIBIOTICOS, multiple: true },
+  { titulo: '5. Síntomas notados', clave: 'sintomas', orden: SINTOMAS, multiple: true },
+  { titulo: '6. Grado de educación', clave: 'grado_educacion', orden: GRADOS_EDUCACION },
+  { titulo: '7. Lugar de residencia', clave: 'lugar_residencia', orden: LUGARES_RESIDENCIA },
+  { titulo: '8. Motivo de automedicación', clave: 'motivo_automedicacion', orden: MOTIVOS },
+]
+
+const tablasFrecuencia = computed(() =>
+  preguntasTabla.map((p) => {
+    const { labels, values } = contarPor(encuestas.value, p.clave, p.orden)
+    const total = values.reduce((a, b) => a + b, 0)
+    const max = Math.max(0, ...values)
+    return {
+      ...p,
+      filas: labels.map((label, i) => ({
+        opcion: label,
+        n: values[i],
+        pct: total ? Math.round((values[i] / total) * 100) : 0,
+        esModa: values[i] === max && max > 0,
+      })),
+    }
+  })
 )
 
 onMounted(cargar)
@@ -104,8 +234,8 @@ onMounted(cargar)
     <div class="anim-aparecer mb-6">
       <h1 class="text-2xl font-bold tracking-tight text-slate-800">Estadísticas</h1>
       <p class="mt-1 max-w-3xl text-sm text-slate-500">
-        Distribución de frecuencia de pacientes con periodontitis crónica, área de
-        periodoncia de la Universidad Odontológica Dominicana (enero–agosto 2019)
+        Resultados del cuestionario sobre automedicación con antibióticos en
+        pacientes con periodontitis crónica · Universidad Odontológica Dominicana
       </p>
     </div>
 
@@ -124,119 +254,142 @@ onMounted(cargar)
       Cargando datos…
     </div>
 
+    <div v-else-if="encuestas.length === 0" class="card py-14 text-center">
+      <p class="text-sm font-medium text-slate-500">Todavía no hay respuestas registradas</p>
+      <p class="mt-1 text-xs text-slate-400">
+        Agrega datos desde la pestaña «Datos» para ver estas estadísticas
+      </p>
+    </div>
+
     <template v-else>
       <!-- Tarjetas resumen -->
       <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div
           v-for="(s, i) in stats"
           :key="s.titulo"
-          class="card anim-aparecer !p-4"
+          class="card anim-aparecer min-w-0 !p-3.5 sm:!p-4"
           :style="{ animationDelay: i * 70 + 'ms' }"
         >
-          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{{ s.titulo }}</p>
-          <p class="mt-1 text-2xl font-bold tracking-tight text-slate-800">{{ s.valor }}</p>
-          <p class="mt-0.5 truncate text-[11px] text-slate-400">{{ s.detalle }}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:text-[11px]">{{ s.titulo }}</p>
+          <p class="mt-1 break-words text-lg font-bold leading-tight tracking-tight text-slate-800 sm:text-2xl">{{ s.valor }}</p>
+          <p class="mt-0.5 text-[11px] leading-snug text-slate-400">{{ s.detalle }}</p>
         </div>
       </div>
 
-      <!-- Cuadro 1 -->
-      <div class="anim-aparecer card mb-6" style="animation-delay: 120ms">
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-lg font-bold tracking-tight text-slate-800">
-            Cuadro 1. Bacterias antes y después del tratamiento
+      <!-- Medidas estadísticas -->
+      <h2 class="anim-aparecer mb-4 text-base font-bold tracking-tight text-slate-800 sm:text-lg" style="animation-delay: 100ms">
+        Medidas estadísticas
+      </h2>
+      <div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div
+          v-for="(m, i) in medidas"
+          :key="m.titulo"
+          class="card anim-aparecer min-w-0 !p-3.5 sm:!p-4"
+          :style="{ animationDelay: 120 + i * 70 + 'ms' }"
+        >
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:text-[11px]">{{ m.titulo }}</p>
+          <p class="mt-1 break-words text-lg font-bold leading-tight tracking-tight text-teal-700 sm:text-2xl">{{ m.valor }}</p>
+          <p class="mt-0.5 text-[11px] leading-snug text-slate-400">{{ m.detalle }}</p>
+        </div>
+      </div>
+
+      <!-- Gráficas destacadas -->
+      <div class="mb-8 grid gap-5 lg:grid-cols-2">
+        <div class="card anim-aparecer !p-4 sm:!p-6" style="animation-delay: 160ms">
+          <h2 class="mb-4 text-base font-bold tracking-tight text-slate-800 sm:text-lg">
+            Frecuencia de automedicación
           </h2>
-          <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500">
-            Fuente: Laboratorio Franjas
+          <PieChart :labels="pieFrecuencia.labels" :values="pieFrecuencia.values" />
+        </div>
+        <div class="card anim-aparecer !p-4 sm:!p-6" style="animation-delay: 220ms">
+          <h2 class="mb-4 text-base font-bold tracking-tight text-slate-800 sm:text-lg">
+            Distribución por género
+          </h2>
+          <PieChart :labels="pieGenero.labels" :values="pieGenero.values" />
+        </div>
+      </div>
+
+      <!-- Tendencia de registro -->
+      <div class="card anim-aparecer mb-8 !p-4 sm:!p-6" style="animation-delay: 240ms">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-base font-bold tracking-tight text-slate-800 sm:text-lg">
+            Tendencia de registro de respuestas
+          </h2>
+          <span class="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-semibold text-teal-700">
+            {{ tendencia.etiqueta }}
           </span>
         </div>
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[560px]">
-            <thead>
-              <tr class="border-b border-slate-100 bg-slate-50/80">
-                <th class="th rounded-tl-lg">Bacterias</th>
-                <th class="th text-right">Antes del tratamiento</th>
-                <th class="th rounded-tr-lg text-right">Después del tratamiento</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="b in bacterias" :key="b.id" class="transition-colors hover:bg-teal-50/40">
-                <td class="td font-medium italic text-slate-700">{{ b.bacteria }}</td>
-                <td class="td">
-                  <div class="ml-auto w-40">
-                    <span class="block text-right font-semibold tabular-nums text-slate-700">
-                      {{ b.antes_tratamiento }}%
-                    </span>
-                    <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        class="h-full rounded-full bg-slate-400 transition-all duration-700"
-                        :style="{ width: Number(b.antes_tratamiento) * 8 + '%' }"
-                      ></div>
-                    </div>
-                  </div>
-                </td>
-                <td class="td">
-                  <div class="ml-auto w-40">
-                    <span class="block text-right font-semibold tabular-nums text-teal-700">
-                      {{ b.despues_tratamiento }}%
-                    </span>
-                    <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        class="h-full rounded-full bg-teal-500 transition-all duration-700"
-                        :style="{ width: Number(b.despues_tratamiento) * 8 + '%' }"
-                      ></div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <BarChart
+          :labels="respuestasPorMes.labels"
+          :datasets="[{ label: 'Respuestas', data: respuestasPorMes.values }]"
+        />
       </div>
 
-      <!-- Gráficas principales -->
-      <div class="mb-8 grid gap-5 lg:grid-cols-2">
-        <div class="card anim-aparecer" style="animation-delay: 160ms">
-          <h2 class="mb-4 text-lg font-bold tracking-tight text-slate-800">
-            Gráfica 1. Resultados después del tratamiento
-          </h2>
-          <PieChart :labels="pieDespues.labels" :values="pieDespues.values" />
-        </div>
-        <div class="card anim-aparecer" style="animation-delay: 220ms">
-          <h2 class="mb-4 text-lg font-bold tracking-tight text-slate-800">
-            Comparativo antes / después
-          </h2>
-          <BarChart
-            :labels="barrasComparativo.labels"
-            :datasets="barrasComparativo.datasets"
-            sufijo="%"
-          />
-        </div>
-      </div>
-
-      <!-- Resultados de la encuesta -->
+      <!-- Resultados por pregunta -->
       <div class="anim-aparecer mb-4 flex flex-wrap items-end justify-between gap-2" style="animation-delay: 260ms">
-        <h2 class="text-lg font-bold tracking-tight text-slate-800">Resultados de la encuesta</h2>
+        <h2 class="text-base font-bold tracking-tight text-slate-800 sm:text-lg">Resultados por pregunta</h2>
         <span class="rounded-full bg-teal-50 px-3 py-1 text-[11px] font-semibold text-teal-700">
           {{ encuestas.length }} respuesta(s)
         </span>
       </div>
 
-      <div v-if="encuestas.length === 0" class="card py-14 text-center">
-        <p class="text-sm font-medium text-slate-500">Todavía no hay respuestas registradas</p>
-        <p class="mt-1 text-xs text-slate-400">
-          Agrega datos desde la pestaña «Datos» para ver estos diagramas
-        </p>
-      </div>
-
-      <div v-else class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+      <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         <div
           v-for="(g, i) in graficasEncuesta"
           :key="g.clave"
-          class="card anim-aparecer"
+          class="card anim-aparecer !p-4 sm:!p-6"
           :style="{ animationDelay: 280 + i * 60 + 'ms' }"
         >
           <h3 class="mb-3 text-[13px] font-bold text-slate-600">{{ g.titulo }}</h3>
-          <BarChart :labels="g.labels" :datasets="[{ label: 'Respuestas', data: g.values }]" />
+          <BarChart
+            :labels="g.labels"
+            :datasets="[{ label: 'Respuestas', data: g.values }]"
+            multicolor
+          />
+        </div>
+      </div>
+
+      <!-- Tablas de frecuencia -->
+      <div class="anim-aparecer mb-4 mt-10" style="animation-delay: 300ms">
+        <h2 class="text-base font-bold tracking-tight text-slate-800 sm:text-lg">Tablas de frecuencia</h2>
+        <p class="mt-1 text-xs text-slate-400">
+          n = cantidad de respuestas · la moda de cada pregunta aparece resaltada
+        </p>
+      </div>
+
+      <div class="grid gap-5 sm:grid-cols-2">
+        <div
+          v-for="(t, i) in tablasFrecuencia"
+          :key="t.clave"
+          class="card anim-aparecer !p-4 sm:!p-6"
+          :style="{ animationDelay: 320 + i * 50 + 'ms' }"
+        >
+          <h3 class="mb-3 text-[13px] font-bold text-slate-600">{{ t.titulo }}</h3>
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-slate-100">
+                <th class="th px-0 py-2 sm:py-3">Opción</th>
+                <th class="th w-14 px-0 py-2 text-right sm:py-3">n</th>
+                <th class="th w-14 px-0 py-2 text-right sm:py-3">%</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr
+                v-for="f in t.filas"
+                :key="f.opcion"
+                :class="f.esModa ? 'bg-teal-50/60' : ''"
+              >
+                <td class="td px-1 py-2 sm:py-3" :class="f.esModa ? 'font-semibold text-teal-800' : ''">
+                  {{ f.opcion }}
+                </td>
+                <td class="td px-1 py-2 text-right tabular-nums sm:py-3">{{ f.n }}</td>
+                <td class="td px-1 py-2 text-right tabular-nums sm:py-3">{{ f.pct }}%</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="t.multiple" class="mt-3 text-[11px] text-slate-400">
+            Selección múltiple: el % se calcula sobre el total de menciones.
+          </p>
         </div>
       </div>
     </template>

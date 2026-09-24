@@ -29,24 +29,18 @@ alter table public.encuestas add column if not exists deleted_at timestamptz;
 alter table public.encuestas add column if not exists deleted_by_nombre text;
 alter table public.encuestas add column if not exists deleted_by_matricula text;
 
--- Cuadro 1: distribución de frecuencia de bacterias antes/después del tratamiento
-create table if not exists public.resultados_bacterias (
-  id                   bigint generated always as identity primary key,
-  bacteria             text not null unique,
-  antes_tratamiento    numeric(5,2) not null,
-  despues_tratamiento  numeric(5,2) not null
-);
+-- Si venías de la versión con la tabla de bacterias (datos informativos,
+-- ya no se usan en la app), puedes borrarla con:
+-- drop table if exists public.resultados_bacterias;
 
 -- ---------- Seguridad (RLS) ----------
--- Solo usuarios autenticados pueden leer e insertar. No hay roles.
+-- Solo usuarios autenticados pueden leer, insertar y actualizar. No hay roles.
 alter table public.encuestas enable row level security;
-alter table public.resultados_bacterias enable row level security;
 
 -- DROP IF EXISTS permite re-ejecutar este script sin errores
 drop policy if exists "lectura usuarios autenticados" on public.encuestas;
 drop policy if exists "insercion usuarios autenticados" on public.encuestas;
 drop policy if exists "actualizacion usuarios autenticados" on public.encuestas;
-drop policy if exists "lectura usuarios autenticados" on public.resultados_bacterias;
 
 create policy "lectura usuarios autenticados"
   on public.encuestas for select
@@ -61,20 +55,9 @@ create policy "actualizacion usuarios autenticados"
   on public.encuestas for update
   to authenticated using (true) with check (true);
 
-create policy "lectura usuarios autenticados"
-  on public.resultados_bacterias for select
-  to authenticated using (true);
-
--- ---------- Datos iniciales (Cuadro 1 de la tesis) ----------
-insert into public.resultados_bacterias (bacteria, antes_tratamiento, despues_tratamiento)
-values
-  ('Peptostreptococos', 9, 5),
-  ('Prevotella',        7, 2),
-  ('Bacteroides',       8, 4),
-  ('Actinomicens',      6, 4)
-on conflict (bacteria) do nothing;
-
--- ---------- Datos de ejemplo (opcional, descomentar para probar) ----------
+-- ---------- Datos de ejemplo ----------
+-- Para poblar la tabla con respuestas de prueba, ejecuta supabase/seed.sql
+-- o descomenta el insert de abajo.
 -- insert into public.encuestas
 --   (frecuencia_automedicacion, rango_edad, genero, antibioticos, sintomas,
 --    grado_educacion, lugar_residencia, motivo_automedicacion)

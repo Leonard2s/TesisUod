@@ -7,13 +7,6 @@ const LS_SESION = 'tesis-uod:sesion'
 const LS_ENCUESTAS = 'tesis-uod:encuestas'
 const LS_USUARIOS = 'tesis-uod:usuarios'
 
-const BACTERIAS = [
-  { id: 1, bacteria: 'Peptostreptococos', antes_tratamiento: 9, despues_tratamiento: 5 },
-  { id: 2, bacteria: 'Prevotella', antes_tratamiento: 7, despues_tratamiento: 2 },
-  { id: 3, bacteria: 'Bacteroides', antes_tratamiento: 8, despues_tratamiento: 4 },
-  { id: 4, bacteria: 'Actinomicens', antes_tratamiento: 6, despues_tratamiento: 4 },
-]
-
 const ENCUESTAS_SEMILLA = [
   {
     id: 1, created_at: '2026-09-01T10:00:00Z',
@@ -242,11 +235,6 @@ export function crearSupabaseDemo() {
     from(tabla) {
       if (tabla === 'encuestas') {
         return crearConsulta(encuestas, { persistir: guardarEncuestas, siguienteId })
-      }
-      if (tabla === 'resultados_bacterias') {
-        // Las bacterias son de solo lectura en la app; se reutiliza la
-        // misma consulta ordenable pero sin persistencia.
-        return crearConsulta(BACTERIAS)
       }
       return crearConsulta([])
     },

@@ -49,7 +49,11 @@ const options = computed(() => ({
       padding: 10,
       cornerRadius: 8,
       callbacks: {
-        label: (ctx) => ` ${ctx.label}: ${ctx.parsed}%`,
+        label: (ctx) => {
+          const total = ctx.dataset.data.reduce((a, b) => a + b, 0)
+          const pct = total ? Math.round((ctx.parsed / total) * 100) : 0
+          return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`
+        },
       },
     },
   },
