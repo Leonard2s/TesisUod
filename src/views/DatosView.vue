@@ -315,21 +315,21 @@ onMounted(() => {
                         v-for="op in pasoActual.opciones"
                         :key="op"
                         type="button"
-                        class="group flex w-full items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-left text-[15px] font-medium transition duration-200 active:scale-[.99] sm:text-base"
+                        class="group flex w-full items-center justify-between gap-3 rounded-2xl border-2 px-5 py-4 text-left text-[15px] font-medium transition duration-200 active:scale-[.99] sm:text-base"
                         :class="
                           formulario[pasoActual.campo] === op
                             ? 'border-teal-600 bg-teal-50 text-teal-800 shadow-md shadow-teal-600/10'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:bg-teal-50/50'
+                            : 'border-slate-300 bg-white text-slate-700 hover:border-teal-500 hover:bg-teal-50/50'
                         "
                         @click="seleccionar(op)"
                       >
                         {{ op }}
                         <span
-                          class="grid h-6 w-6 shrink-0 place-items-center rounded-full border transition duration-200"
+                          class="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition duration-200"
                           :class="
                             formulario[pasoActual.campo] === op
                               ? 'border-teal-600 bg-teal-600 text-white'
-                              : 'border-slate-300 text-transparent group-hover:border-teal-300'
+                              : 'border-slate-400 bg-white text-transparent group-hover:border-teal-500'
                           "
                         >
                           <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
@@ -352,8 +352,8 @@ onMounted(() => {
                           class="inline-block rounded-full border px-5 py-2.5 text-[15px] font-medium transition duration-200 active:scale-95 sm:text-base"
                           :class="
                             pasoActual.campo === 'antibioticos'
-                              ? 'border-slate-200 bg-slate-50 text-slate-500 hover:border-teal-300 peer-checked:border-teal-600 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-teal-600/25'
-                              : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-sky-300 peer-checked:border-sky-600 peer-checked:bg-sky-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-sky-600/25'
+                              ? 'border-slate-300 bg-slate-50 text-slate-600 hover:border-teal-500 peer-checked:border-teal-600 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-teal-600/25'
+                              : 'border-slate-300 bg-slate-50 text-slate-600 hover:border-sky-500 peer-checked:border-sky-600 peer-checked:bg-sky-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-sky-600/25'
                           "
                         >
                           {{ op }}
