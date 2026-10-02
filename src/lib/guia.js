@@ -60,7 +60,7 @@ export function iniciarGuiaConfiguracion() {
       popover: {
         title: 'Paso 4 · Definir el orden',
         description:
-          'Con las flechas subes o bajas cada pregunta. El orden se guarda al instante y define la secuencia del cuestionario, las estadísticas y las exportaciones.',
+          'Arrastra la tarjeta a su posición o usa las flechas para subir o bajar la pregunta. El orden se guarda al instante y define la secuencia del cuestionario, las estadísticas y las exportaciones.',
       },
     })
   }

@@ -254,7 +254,9 @@ onMounted(() => {
 
 <template>
   <main class="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6">
-    <div class="anim-aparecer mb-6 flex flex-wrap items-end justify-between gap-4">
+    <!-- relative z-30: hace que el desplegable de Exportar se dibuje
+         por encima de la tabla (la animación crea contextos de apilamiento) -->
+    <div class="anim-aparecer relative z-30 mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="text-2xl font-bold tracking-tight text-slate-800">Datos de la encuesta</h1>
         <p class="mt-1 text-sm text-slate-500">

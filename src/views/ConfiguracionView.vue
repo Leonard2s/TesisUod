@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { supabase } from '../lib/supabaseClient'
 import { cargarPreguntas, slug } from '../lib/preguntas'
 import { usuarioActual } from '../lib/usuario'
@@ -17,8 +17,26 @@ const editando = ref(null) // null = nueva pregunta
 const guardando = ref(false)
 const formError = ref('')
 const claveManual = ref(false) // true si el usuario editó la clave a mano
-const nuevaOpcion = ref('')
-const form = reactive({ titulo: '', etiqueta: '', clave: '', tipo: 'unica', opciones: [] })
+const form = reactive({ titulo: '', etiqueta: '', clave: '', tipo: 'unica', opcionesTexto: '' })
+
+// Opciones escritas en el textarea (una por línea), sin líneas vacías
+// ni repetidas
+const opcionesDelForm = computed(() => {
+  const vistas = []
+  for (const linea of form.opcionesTexto.split('\n')) {
+    const opcion = linea.trim()
+    if (opcion && !vistas.includes(opcion)) vistas.push(opcion)
+  }
+  return vistas
+})
+
+// Quita del textarea todas las líneas con esa opción
+function quitarLinea(opcion) {
+  form.opcionesTexto = form.opcionesTexto
+    .split('\n')
+    .filter((linea) => linea.trim() !== opcion)
+    .join('\n')
+}
 
 // ---------- Estado de acciones ----------
 const confirmandoEliminar = ref(null)
@@ -47,9 +65,8 @@ function cerrarModal() {
 
 function abrirNueva() {
   editando.value = null
-  Object.assign(form, { titulo: '', etiqueta: '', clave: '', tipo: 'unica', opciones: [] })
+  Object.assign(form, { titulo: '', etiqueta: '', clave: '', tipo: 'unica', opcionesTexto: '' })
   claveManual.value = false
-  nuevaOpcion.value = ''
   formError.value = ''
   modalAbierto.value = true
 }
@@ -61,7 +78,7 @@ function abrirEditar(p) {
     etiqueta: p.etiqueta ?? '',
     clave: p.clave,
     tipo: p.tipo,
-    opciones: [...p.opciones],
+    opcionesTexto: p.opciones.join('\n'),
   })
   formError.value = ''
   modalAbierto.value = true
@@ -80,17 +97,6 @@ function marcarClaveManual() {
   claveManual.value = true
 }
 
-function agregarOpcion() {
-  const opcion = nuevaOpcion.value.trim()
-  if (!opcion) return
-  if (!form.opciones.includes(opcion)) form.opciones.push(opcion)
-  nuevaOpcion.value = ''
-}
-
-function quitarOpcion(opcion) {
-  form.opciones = form.opciones.filter((o) => o !== opcion)
-}
-
 function siguienteOrden() {
   const max = [...preguntas.value, ...eliminadas.value].reduce(
     (m, p) => Math.max(m, p.orden ?? 0),
@@ -104,6 +110,7 @@ async function guardar() {
   const titulo = form.titulo.trim()
   const clave = form.clave.trim()
   const etiqueta = form.etiqueta.trim()
+  const opciones = opcionesDelForm.value
 
   if (!titulo) {
     formError.value = 'Escribe el título de la pregunta'
@@ -121,8 +128,8 @@ async function guardar() {
       'Ya existe una pregunta con la clave «' + clave + '»: las respuestas guardadas se identifican por la clave'
     return
   }
-  if (form.opciones.length < 2) {
-    formError.value = 'Agrega al menos 2 opciones'
+  if (opciones.length < 2) {
+    formError.value = 'Escribe al menos 2 opciones (una por línea)'
     return
   }
 
@@ -131,7 +138,7 @@ async function guardar() {
     titulo,
     etiqueta: etiqueta || null,
     tipo: form.tipo,
-    opciones: [...form.opciones],
+    opciones,
     updated_at: new Date().toISOString(),
   }
 
@@ -162,6 +169,46 @@ async function mover(indice, direccion) {
   ;[lista[indice], lista[destino]] = [lista[destino], lista[indice]]
   preguntas.value = lista
   await persistirOrden()
+}
+
+// ---------- Arrastrar para reordenar ----------
+const arrastrando = ref(null) // índice de la fila que se arrastra
+const sobreFila = ref(null) // fila sobre la que se pasa mientras se arrastra
+
+function alIniciarArrastre(indice, ev) {
+  if (moviendo.value) {
+    ev.preventDefault()
+    return
+  }
+  arrastrando.value = indice
+  // Necesario para que Firefox inicie el arrastre
+  ev.dataTransfer.effectAllowed = 'move'
+  ev.dataTransfer.setData('text/plain', String(indice))
+}
+
+function alPasarEncima(indice) {
+  if (arrastrando.value !== null && arrastrando.value !== indice) sobreFila.value = indice
+}
+
+function alSoltar(indice) {
+  const desde = arrastrando.value
+  limpiarArrastre()
+  if (desde === null || desde === indice) return
+
+  const lista = [...preguntas.value]
+  const [movida] = lista.splice(desde, 1)
+  lista.splice(indice, 0, movida)
+  preguntas.value = lista
+  persistirOrden()
+}
+
+function alTerminarArrastre() {
+  limpiarArrastre()
+}
+
+function limpiarArrastre() {
+  arrastrando.value = null
+  sobreFila.value = null
 }
 
 async function persistirOrden() {
@@ -326,10 +373,24 @@ onMounted(async () => {
           v-for="(p, i) in preguntas"
           :key="p.id"
           :data-guia="i === 0 ? 'pregunta' : null"
-          class="flex flex-col gap-3 border-b border-slate-100 p-4 last:border-0 sm:flex-row sm:items-center sm:gap-4"
+          draggable="true"
+          class="flex flex-col gap-3 border-b border-slate-100 p-4 last:border-0 transition-colors sm:flex-row sm:items-center sm:gap-4"
+          :class="[arrastrando === i ? 'opacity-40' : '', sobreFila === i ? 'bg-teal-50/70' : '']"
+          title="Arrastra la tarjeta para reordenar la pregunta"
+          @dragstart="alIniciarArrastre(i, $event)"
+          @dragover.prevent="alPasarEncima(i)"
+          @drop.prevent="alSoltar(i)"
+          @dragend="alTerminarArrastre"
         >
           <!-- Número + controles de orden -->
           <div class="flex items-center gap-2.5 sm:flex-col sm:gap-1.5">
+            <svg
+              class="hidden h-5 w-5 shrink-0 cursor-grab text-slate-300 transition hover:text-teal-500 active:cursor-grabbing sm:block"
+              viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+            >
+              <title>Arrastra para reordenar</title>
+              <path d="M9 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm10 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM9 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm10 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM9 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm10 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
+            </svg>
             <span class="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-teal-600/10 text-sm font-bold text-teal-700">
               {{ i + 1 }}
             </span>
@@ -581,23 +642,19 @@ onMounted(async () => {
             </div>
 
             <div>
-              <label class="label" for="p-opcion">Opciones</label>
-              <div class="flex gap-2">
-                <input
-                  id="p-opcion"
-                  v-model="nuevaOpcion"
-                  class="input"
-                  type="text"
-                  placeholder="Escribe una opción…"
-                  @keydown.enter.prevent="agregarOpcion"
-                />
-                <button type="button" class="btn-outline shrink-0 !px-4" @click="agregarOpcion">
-                  Agregar
-                </button>
-              </div>
-              <div class="mt-2.5 flex flex-wrap gap-1.5">
+              <label class="label" for="p-opciones">
+                Opciones <span class="font-normal text-slate-400">(una por línea, sin límite)</span>
+              </label>
+              <textarea
+                id="p-opciones"
+                v-model="form.opcionesTexto"
+                class="input min-h-[110px] resize-y leading-relaxed"
+                rows="5"
+                placeholder="Ej:&#10;Rara vez&#10;Frecuentemente&#10;Nunca"
+              ></textarea>
+              <div class="mt-2 flex flex-wrap gap-1.5">
                 <span
-                  v-for="op in form.opciones"
+                  v-for="op in opcionesDelForm"
                   :key="op"
                   class="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 py-1 pl-3 pr-2 text-[13px] font-medium text-teal-700"
                 >
@@ -606,7 +663,7 @@ onMounted(async () => {
                     type="button"
                     class="grid h-5 w-5 place-items-center rounded-full text-teal-500 transition hover:bg-teal-100 hover:text-teal-700 active:scale-95"
                     title="Quitar"
-                    @click="quitarOpcion(op)"
+                    @click="quitarLinea(op)"
                   >
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
                       <path d="M18 6 6 18M6 6l12 12" />
@@ -614,8 +671,8 @@ onMounted(async () => {
                   </button>
                 </span>
               </div>
-              <p v-if="!form.opciones.length" class="mt-1.5 text-[11px] text-slate-400">
-                Agrega al menos 2 opciones (Enter para añadir rápido)
+              <p class="mt-1.5 text-[11px] text-slate-400">
+                {{ opcionesDelForm.length }} opción(es) — se ignoran las líneas vacías y las repetidas
               </p>
             </div>
           </div>
