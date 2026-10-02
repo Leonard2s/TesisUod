@@ -23,6 +23,7 @@ const ETIQUETAS_ACCION = {
   pregunta_restaurada: { texto: 'Pregunta', clase: 'bg-sky-50 text-sky-700' },
   preguntas_reordenadas: { texto: 'Orden', clase: 'bg-amber-50 text-amber-700' },
   exportacion: { texto: 'Exportación', clase: 'bg-emerald-50 text-emerald-600' },
+  importacion: { texto: 'Importación', clase: 'bg-cyan-50 text-cyan-700' },
 }
 
 async function cargar() {

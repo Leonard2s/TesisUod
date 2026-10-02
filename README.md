@@ -13,12 +13,28 @@ periodontitis crónica**.
 | Ruta | Descripción |
 |---|---|
 | `/login` | Inicio de sesión con correo y contraseña (Supabase Auth, sin roles) |
-| `/datos` | Tabla de respuestas de la encuesta + formulario para registrar nuevas + exportación a Excel, PDF y Word |
+| `/datos` | Tabla de respuestas + formulario + exportación a Excel/PDF/Word (con tablas de frecuencia y gráficas) e importación desde Excel |
 | `/estadisticas` | Resumen, medidas estadísticas, gráficas de pie y barras, y tablas de frecuencia por pregunta |
 | `/papelera` | Encuestas eliminadas (borrado lógico) con opción de restaurar |
 | `/accesos` | Auditoría: actividad de cada usuario (qué hace y cuándo), sesiones y usuarios registrados |
 | `/configuracion` | CRUD de las preguntas del cuestionario: crear, editar, reordenar (arrastrar), eliminar (borrado lógico) y restaurar |
 | `/perfil` | Datos del usuario (nombre, apellido, matrícula) y cambio de contraseña |
+
+## Exportar e importar
+
+Desde la vista **Datos**:
+
+- **Exportar** genera tres archivos con la tabla de respuestas, las
+  tablas de frecuencia y las gráficas de la tesis:
+  - **Excel (.xlsx)**: hojas `Encuestas`, `Frecuencias`, `Gráficas` (imágenes)
+    y `Metadatos` (mapeo de columnas usado por la importación)
+  - **PDF (.pdf)**: tabla de respuestas, tablas de frecuencia y gráficas
+  - **Word (.docx)**: lo mismo, en formato editable
+- **Importar** carga de vuelta un Excel exportado por la app (botón
+  «Importar» → elegir el .xlsx → confirmar). Se agregan como registros
+  nuevos y se registran en la auditoría. Si el cuestionario cambió de
+  orden o etiquetas, el mapeo se hace por la clave de cada pregunta
+  (hoja `Metadatos`), así que el archivo sigue siendo compatible.
 
 ## Modo demo (desarrollo)
 

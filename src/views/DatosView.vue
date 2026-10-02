@@ -5,6 +5,7 @@ import { cargarPreguntas, etiquetaDe } from '../lib/preguntas'
 import { usuarioActual } from '../lib/usuario'
 import { registrarAccion } from '../lib/auditoria'
 import { exportarExcel, exportarPDF, exportarWord } from '../lib/exportar'
+import { importarEncuestasDesdeExcel } from '../lib/importar'
 
 const preguntas = ref([])
 const encuestas = ref([])
@@ -247,6 +248,63 @@ async function exportar(tipo) {
   }
 }
 
+// ---------- Importación desde Excel ----------
+const inputArchivo = ref(null)
+const importando = ref(false)
+const importPendiente = ref(null) // resumen del archivo leído
+const importGuardando = ref(false)
+const importOk = ref('')
+
+function elegirArchivo() {
+  errorMsg.value = ''
+  importOk.value = ''
+  inputArchivo.value?.click()
+}
+
+async function alElegirArchivo(ev) {
+  const archivo = ev.target.files?.[0]
+  ev.target.value = '' // permite volver a elegir el mismo archivo
+  if (!archivo) return
+
+  errorMsg.value = ''
+  importOk.value = ''
+  importando.value = true
+  try {
+    const resumen = await importarEncuestasDesdeExcel(archivo, preguntas.value)
+    importPendiente.value = resumen
+  } catch (e) {
+    errorMsg.value = e.message ?? String(e)
+  }
+  importando.value = false
+}
+
+async function confirmarImportacion() {
+  if (!importPendiente.value) return
+  importGuardando.value = true
+  errorMsg.value = ''
+
+  const filas = importPendiente.value.filas
+  let importadas = 0
+  for (const fila of filas) {
+    const { error } = await supabase.from('encuestas').insert(fila)
+    if (error) {
+      errorMsg.value = `Se importaron ${importadas} de ${filas.length}: ` + error.message
+      break
+    }
+    importadas++
+  }
+  importGuardando.value = false
+
+  if (importadas) {
+    registrarAccion('importacion', `Importó ${importadas} respuesta(s) desde Excel`)
+    importOk.value = importadas === filas.length
+      ? `${importadas} encuesta(s) importadas correctamente`
+      : `${importadas} encuesta(s) importadas`
+  }
+  importPendiente.value = null
+  await cargar()
+}
+
 // Columnas que se muestran en el resumen (tabla y tarjetas móviles)
 const columnasResumen = computed(() => preguntas.value.slice(0, 4))
 
@@ -272,6 +330,37 @@ onMounted(() => {
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Importar -->
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="importando || cargandoPreguntas"
+          title="Importar respuestas desde un Excel exportado por la app"
+          @click="elegirArchivo"
+        >
+          <svg
+            v-if="importando"
+            class="h-4 w-4 animate-spin"
+            viewBox="0 0 24 24" fill="none"
+          >
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+          </svg>
+          <svg v-else class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          {{ importando ? 'Leyendo…' : 'Importar' }}
+        </button>
+        <input
+          ref="inputArchivo"
+          type="file"
+          accept=".xlsx"
+          class="hidden"
+          @change="alElegirArchivo"
+        />
+
         <!-- Exportar -->
         <div class="relative">
           <button
@@ -336,6 +425,26 @@ onMounted(() => {
           Nueva encuesta
         </button>
       </div>
+    </div>
+
+    <!-- Mensajes de importación/exportación -->
+    <div
+      v-if="errorMsg || importOk"
+      class="anim-aparecer mb-4 flex flex-col gap-2"
+      style="animation-delay: 40ms"
+    >
+      <p
+        v-if="errorMsg"
+        class="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600"
+      >
+        {{ errorMsg }}
+      </p>
+      <p
+        v-if="importOk"
+        class="rounded-xl bg-teal-50 px-3.5 py-2.5 text-xs font-medium text-teal-700"
+      >
+        {{ importOk }}
+      </p>
     </div>
 
     <!-- ============ Encuesta a pantalla completa (modo paciente) ============ -->
@@ -673,6 +782,76 @@ onMounted(() => {
       </div>
       </template>
     </div>
+
+    <!-- ============ Modal de confirmación de importación ============ -->
+    <transition name="modal">
+      <div
+        v-if="importPendiente"
+        class="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/45 backdrop-blur-sm sm:items-center sm:p-6"
+        @click.self="importPendiente = null"
+      >
+        <div
+          class="modal-card w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div class="mb-4 flex items-start gap-3">
+            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-600/10 text-teal-700">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </span>
+            <div>
+              <h3 class="text-base font-bold tracking-tight text-slate-800">Importar respuestas</h3>
+              <p class="text-[12px] text-slate-400">Archivo Excel exportado por la app</p>
+            </div>
+          </div>
+
+          <div class="space-y-2.5 rounded-xl bg-slate-50 p-4 text-[13px] text-slate-600">
+            <p>
+              El archivo contiene
+              <span class="font-bold text-teal-700">{{ importPendiente.filas.length }}</span>
+              respuesta(s) de encuesta listas para importar.
+            </p>
+            <p v-if="importPendiente.sinPregunta.length" class="text-[12px] text-amber-600">
+              Ojo: {{ importPendiente.sinPregunta.length }} pregunta(s) del archivo ya no existen en el
+              cuestionario actual. Sus respuestas se guardan igual (reaparecen si restauras la
+              pregunta).
+            </p>
+            <p class="text-[12px] text-slate-400">
+              Se agregarán como registros nuevos; las respuestas actuales no se tocan.
+            </p>
+          </div>
+
+          <p
+            v-if="errorMsg"
+            class="mt-4 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600"
+          >
+            {{ errorMsg }}
+          </p>
+
+          <div class="mt-5 flex justify-end gap-2.5 border-t border-slate-100 pt-5">
+            <button type="button" class="btn-outline" @click="importPendiente = null">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="btn-primary"
+              :disabled="importGuardando"
+              @click="confirmarImportacion"
+            >
+              <svg v-if="importGuardando" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+              </svg>
+              {{ importGuardando ? 'Importando…' : 'Importar ' + importPendiente.filas.length + ' respuestas' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <!-- ============ Modal de detalle ============ -->
     <transition name="modal">

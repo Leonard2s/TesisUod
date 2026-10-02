@@ -43,3 +43,30 @@ export function valoresDe(encuesta, clave) {
   const valor = encuesta?.respuestas?.[clave]
   return Array.isArray(valor) ? valor : []
 }
+
+// Cuenta ocurrencias de una pregunta; las de selección múltiple cuentan
+// cada valor. Con `orden` las etiquetas siguen el orden del cuestionario;
+// sin él se ordenan de mayor a menor frecuencia. La usan las estadísticas
+// y las exportaciones.
+export function contarPor(items, clave, orden = null) {
+  const conteo = {}
+  for (const item of items) {
+    for (const v of valoresDe(item, clave)) {
+      if (v) conteo[v] = (conteo[v] ?? 0) + 1
+    }
+  }
+  let entradas = Object.entries(conteo)
+  if (orden) {
+    entradas.sort((a, b) => {
+      const ia = orden.indexOf(a[0])
+      const ib = orden.indexOf(b[0])
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+  } else {
+    entradas.sort((a, b) => b[1] - a[1])
+  }
+  return {
+    labels: entradas.map(([k]) => k),
+    values: entradas.map(([, v]) => v),
+  }
+}
