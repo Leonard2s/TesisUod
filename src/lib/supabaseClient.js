@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { crearSupabaseDemo } from './demo'
+import { cookieStorage } from './cookieStorage'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey =
@@ -19,7 +20,13 @@ export const MODO_DEMO =
 
 export const supabase = MODO_DEMO
   ? crearSupabaseDemo()
-  : createClient(supabaseUrl, supabaseAnonKey)
+  : createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        // El inicio de sesión se guarda en cookies (no en localStorage)
+        // para que persista entre recargas y al cerrar el navegador
+        storage: cookieStorage,
+      },
+    })
 
 // Supabase Auth exige un correo electrónico. Como la app identifica a los
 // usuarios por matrícula, se genera un correo interno a partir de ella.

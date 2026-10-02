@@ -1,9 +1,11 @@
 // Backend de demostración para desarrollo.
 // Se activa cuando no hay credenciales reales de Supabase configuradas
-// (o forzado con VITE_MODO_DEMO=true). La sesión y las encuestas nuevas
-// se guardan en localStorage, así que sobreviven a las recargas.
+// (o forzado con VITE_MODO_DEMO=true). La sesión se guarda en cookies y
+// las encuestas nuevas en localStorage, así que sobreviven a las recargas.
 
-const LS_SESION = 'tesis-uod:sesion'
+import { cookieStorage } from './cookieStorage'
+
+const COOKIE_SESION = 'tesis-uod-sesion'
 const LS_ENCUESTAS = 'tesis-uod:encuestas'
 const LS_PREGUNTAS = 'tesis-uod:preguntas'
 const LS_USUARIOS = 'tesis-uod:usuarios'
@@ -185,7 +187,7 @@ function crearAuth() {
   const listeners = new Set()
   let sesion = null
   try {
-    sesion = JSON.parse(localStorage.getItem(LS_SESION) || 'null')
+    sesion = JSON.parse(cookieStorage.getItem(COOKIE_SESION) || 'null')
   } catch {
     sesion = null
   }
@@ -224,13 +226,13 @@ function crearAuth() {
         }
       }
       sesion = { user: registrado?.user || { email }, access_token: 'demo-token' }
-      localStorage.setItem(LS_SESION, JSON.stringify(sesion))
+      cookieStorage.setItem(COOKIE_SESION, JSON.stringify(sesion))
       notificar('SIGNED_IN')
       return { data: { session: sesion }, error: null }
     },
     async signOut() {
       sesion = null
-      localStorage.removeItem(LS_SESION)
+      cookieStorage.removeItem(COOKIE_SESION)
       notificar('SIGNED_OUT')
       return { error: null }
     },
