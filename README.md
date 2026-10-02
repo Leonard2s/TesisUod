@@ -13,8 +13,10 @@ periodontitis crónica**.
 | Ruta | Descripción |
 |---|---|
 | `/login` | Inicio de sesión con correo y contraseña (Supabase Auth, sin roles) |
-| `/datos` | Tabla de respuestas de la encuesta + formulario para registrar nuevas |
-| `/estadisticas` | Cuadro 1 (bacterias antes/después), gráfica de pie y barras, más diagramas por cada pregunta de la encuesta |
+| `/datos` | Tabla de respuestas de la encuesta + formulario para registrar nuevas + exportación a Excel, PDF y Word |
+| `/estadisticas` | Resumen, medidas estadísticas, gráficas de pie y barras, y tablas de frecuencia por pregunta |
+| `/papelera` | Encuestas eliminadas (borrado lógico) con opción de restaurar |
+| `/configuracion` | CRUD de las preguntas del cuestionario: crear, editar, reordenar, eliminar (borrado lógico) y restaurar |
 
 ## Modo demo (desarrollo)
 
@@ -28,9 +30,13 @@ un `.env` con las claves reales, la app usa Supabase automáticamente.
 
 1. **Crear el proyecto en Supabase** (https://supabase.com).
 2. **Crear las tablas:** en el dashboard ve a *SQL Editor* y ejecuta todo el
-   contenido de `supabase/schema.sql` (crea las tablas, las políticas y carga
-   los datos del Cuadro 1).
-3. **Crear un usuario:** en *Authentication → Users → Add user*, registra el
+   contenido de `supabase/schema.sql` (crea las tablas `encuestas` y
+   `preguntas`, las políticas RLS y siembra las 8 preguntas del cuestionario).
+3. **Si ya tenías datos con el esquema anterior:** ejecuta también
+   `supabase/migracion-preguntas.sql`. Copia tus encuestas existentes al
+   nuevo formato (columna `respuestas` jsonb) **sin borrar nada**: las
+   columnas originales se mantienen y los datos quedan intactos.
+4. **Crear un usuario:** en *Authentication → Users → Add user*, registra el
    correo y contraseña con los que entrarás a la app.
 4. **Variables de entorno:**
 
@@ -69,10 +75,15 @@ un `.env` con las claves reales, la app usa Supabase automáticamente.
 
 ```
 src/
-  lib/supabaseClient.js   Cliente de Supabase
-  lib/opciones.js         Opciones del cuestionario
+  lib/supabaseClient.js   Cliente de Supabase (con modo demo)
+  lib/demo.js             Backend de demostración (localStorage)
+  lib/preguntas.js        Servicio de preguntas del cuestionario
+  lib/usuario.js          Usuario autenticado (auditoría)
+  lib/exportar.js         Exportación a Excel, PDF y Word
   router/index.js         Rutas + guard de autenticación
   components/             Navbar, PieChart, BarChart
-  views/                  LoginView, DatosView, EstadisticasView
-supabase/schema.sql       Tablas, políticas RLS y datos iniciales
+  views/                  Login, Registro, Datos, Estadísticas, Papelera, Configuración
+supabase/schema.sql       Tablas, políticas RLS y seed de preguntas
+supabase/migracion-preguntas.sql  Migra datos existentes al formato nuevo (sin perder nada)
+supabase/seed.sql         Datos de prueba para encuestas
 ```

@@ -3,6 +3,9 @@
 -- Ejecutar en: Supabase Dashboard -> SQL Editor
 -- Son respuestas ficticias con distribución plausible para ver
 -- las estadísticas funcionando. Borra o ajusta según necesites.
+-- Requiere el esquema actual (supabase/schema.sql o
+-- supabase/migracion-preguntas.sql): al final copia los datos al
+-- formato nuevo de la columna respuestas (jsonb).
 -- ============================================================
 
 insert into public.encuestas
@@ -46,3 +49,23 @@ values
   ('2026-09-18T11:15:00Z', 'Rara vez',       'De 30 a 39 años',  'Mujer',  '{Amoxicilina}',               '{Dolor}',                     'Especialidad',     'Ciudad de la capital',    'Falta de tiempo para ir a consulta',    'Carga inicial', 'seed'),
   ('2026-09-18T16:05:00Z', 'Nunca',          'De 50 a 59 años',  'Hombre', '{}',                         '{Sarro,Inflamación}',         'Nivel secundario', 'Urbanización',            'Por prevención',                        'Carga inicial', 'seed'),
   ('2026-09-19T09:55:00Z', 'Frecuentemente', 'De 40 a 49 años',  'Mujer',  '{Amoxicilina,Metronidazol}',  '{Dolor,Sangrado}',            'Nivel secundario', 'Pueblo de una provincia', 'Recomendación de tercera persona',      'Carga inicial', 'seed');
+
+-- ---------- Copia al formato nuevo (respuestas jsonb) ----------
+-- Igual que en migracion-preguntas.sql: rellena la columna respuestas de
+-- cualquier fila que aún no la tenga, sin tocar los datos existentes.
+alter table public.encuestas
+  add column if not exists respuestas jsonb not null default '{}'::jsonb;
+
+update public.encuestas
+set respuestas = jsonb_build_object(
+  'frecuencia_automedicacion', to_jsonb(array[frecuencia_automedicacion]),
+  'rango_edad',                 to_jsonb(array[rango_edad]),
+  'genero',                     to_jsonb(array[genero]),
+  'antibioticos',               to_jsonb(antibioticos),
+  'sintomas',                   to_jsonb(sintomas),
+  'grado_educacion',            to_jsonb(array[grado_educacion]),
+  'lugar_residencia',           to_jsonb(array[lugar_residencia]),
+  'motivo_automedicacion',      to_jsonb(array[motivo_automedicacion])
+)
+where respuestas = '{}'::jsonb
+  and frecuencia_automedicacion is not null;

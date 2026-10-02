@@ -1,14 +1,22 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabaseClient'
+import { cargarPreguntas, etiquetaDe } from '../lib/preguntas'
 
 const eliminados = ref([])
+const preguntas = ref([])
 const cargando = ref(true)
 const errorMsg = ref('')
 const restaurando = ref(null)
 
 async function cargar() {
   cargando.value = true
+  try {
+    preguntas.value = await cargarPreguntas(false)
+  } catch (e) {
+    errorMsg.value = 'No se pudieron cargar las preguntas: ' + (e.message ?? e)
+  }
+
   const { data, error } = await supabase
     .from('encuestas')
     .select('*')
@@ -53,6 +61,15 @@ function colorFrecuencia(f) {
   if (f === 'Frecuentemente') return 'bg-amber-50 text-amber-700'
   if (f === 'Nunca') return 'bg-slate-100 text-slate-500'
   return 'bg-teal-50 text-teal-700'
+}
+
+// La frecuencia conserva su código de color en el chip de cabecera
+function esChipFrecuencia(pregunta) {
+  return pregunta?.clave === 'frecuencia_automedicacion'
+}
+
+function valorResumen(encuesta, pregunta) {
+  return (encuesta.respuestas?.[pregunta?.clave] ?? []).join(', ')
 }
 
 onMounted(cargar)
@@ -108,26 +125,22 @@ onMounted(cargar)
         <div class="flex items-center justify-between gap-3">
           <span
             class="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-            :class="colorFrecuencia(e.frecuencia_automedicacion)"
+            :class="esChipFrecuencia(preguntas[0]) ? colorFrecuencia(e.respuestas?.[preguntas[0]?.clave]?.[0]) : 'bg-teal-50 text-teal-700'"
           >
-            {{ e.frecuencia_automedicacion }}
+            {{ valorResumen(e, preguntas[0]) || '—' }}
           </span>
           <span class="text-[11px] font-medium text-slate-400">#{{ e.id }}</span>
         </div>
 
-        <!-- Resumen del paciente -->
+        <!-- Resumen de respuestas -->
         <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-          <div>
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Género</p>
-            <p class="mt-0.5 text-[13px] font-medium text-slate-700">{{ e.genero }}</p>
-          </div>
-          <div>
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Edad</p>
-            <p class="mt-0.5 text-[13px] font-medium text-slate-700">{{ e.rango_edad }}</p>
-          </div>
-          <div class="col-span-2">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Motivo</p>
-            <p class="mt-0.5 text-[13px] font-medium text-slate-700">{{ e.motivo_automedicacion }}</p>
+          <div v-for="p in preguntas.slice(1, 5)" :key="p.clave">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              {{ etiquetaDe(p) }}
+            </p>
+            <p class="mt-0.5 truncate text-[13px] font-medium text-slate-700">
+              {{ valorResumen(e, p) || '—' }}
+            </p>
           </div>
         </div>
 

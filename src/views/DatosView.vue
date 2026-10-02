@@ -1,57 +1,42 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { supabase } from '../lib/supabaseClient'
-import {
-  FRECUENCIAS,
-  RANGOS_EDAD,
-  GENEROS,
-  ANTIBIOTICOS,
-  SINTOMAS,
-  GRADOS_EDUCACION,
-  LUGARES_RESIDENCIA,
-  MOTIVOS,
-} from '../lib/opciones'
+import { cargarPreguntas, etiquetaDe } from '../lib/preguntas'
+import { usuarioActual } from '../lib/usuario'
+import { exportarExcel, exportarPDF, exportarWord } from '../lib/exportar'
 
+const preguntas = ref([])
 const encuestas = ref([])
 const cargando = ref(true)
+const cargandoPreguntas = ref(true)
 const guardando = ref(false)
 const errorMsg = ref('')
 const mostrarFormulario = ref(false)
 const guardado = ref(false)
 
-const pasos = [
-  { campo: 'frecuencia_automedicacion', titulo: '¿Con qué frecuencia se automedica?', tipo: 'unica', opciones: FRECUENCIAS },
-  { campo: 'rango_edad', titulo: '¿Qué edad tienes?', tipo: 'unica', opciones: RANGOS_EDAD },
-  { campo: 'genero', titulo: 'Género', tipo: 'unica', opciones: GENEROS },
-  { campo: 'antibioticos', titulo: '¿Con cuál o cuáles antibióticos se ha automedicado?', tipo: 'multiple', opciones: ANTIBIOTICOS },
-  { campo: 'sintomas', titulo: '¿Cuáles de los siguientes síntomas ha notado?', tipo: 'multiple', opciones: SINTOMAS },
-  { campo: 'grado_educacion', titulo: '¿Cuál es su grado de educación?', tipo: 'unica', opciones: GRADOS_EDUCACION },
-  { campo: 'lugar_residencia', titulo: '¿Cuál es su lugar de residencia?', tipo: 'unica', opciones: LUGARES_RESIDENCIA },
-  { campo: 'motivo_automedicacion', titulo: '¿Por qué se automedica?', tipo: 'unica', opciones: MOTIVOS },
-]
+// El cuestionario se arma con las preguntas activas (tabla preguntas),
+// en el orden definido en la pantalla de Configuración
+const pasos = computed(() => preguntas.value)
 
 const paso = ref(0)
 const direccion = ref('slide-izq')
-const pasoActual = computed(() => pasos[paso.value])
-const esUltimo = computed(() => paso.value === pasos.length - 1)
-const progreso = computed(() => ((paso.value + 1) / pasos.length) * 100)
+const pasoActual = computed(() => pasos.value[paso.value])
+const esUltimo = computed(() => paso.value === pasos.value.length - 1)
+const progreso = computed(() => ((paso.value + 1) / pasos.value.length) * 100)
 
-const formularioVacio = {
-  frecuencia_automedicacion: '',
-  rango_edad: '',
-  genero: '',
-  antibioticos: [],
-  sintomas: [],
-  grado_educacion: '',
-  lugar_residencia: '',
-  motivo_automedicacion: '',
+// Formulario dinámico: { clave_pregunta: [respuestas...] }. Los valores
+// siempre son arreglos (las de opción única traen un elemento).
+const formulario = reactive({})
+
+function reiniciarFormulario() {
+  Object.keys(formulario).forEach((clave) => delete formulario[clave])
+  for (const p of preguntas.value) formulario[p.clave] = []
 }
 
-const formulario = reactive({ ...formularioVacio })
-
 const respondido = computed(() => {
-  const valor = formulario[pasoActual.value.campo]
-  return Array.isArray(valor) ? true : !!valor
+  if (!pasoActual.value) return false
+  if (pasoActual.value.tipo === 'multiple') return true
+  return (formulario[pasoActual.value.clave]?.length ?? 0) > 0
 })
 
 // Bloquea el scroll de fondo mientras la encuesta está a pantalla completa
@@ -61,6 +46,7 @@ watch(mostrarFormulario, (abierto) => {
     paso.value = 0
     direccion.value = 'slide-izq'
     guardado.value = false
+    reiniciarFormulario()
   }
 })
 
@@ -71,7 +57,7 @@ onUnmounted(() => {
 
 function seleccionar(opcion) {
   const actual = paso.value
-  formulario[pasos[actual].campo] = opcion
+  formulario[pasos.value[actual].clave] = [opcion]
   if (esUltimo.value) return
   // Auto-avanza tras una pausa breve para que se vea la selección
   setTimeout(() => {
@@ -100,6 +86,7 @@ function anterior() {
 
 function otraRespuesta() {
   guardado.value = false
+  reiniciarFormulario()
   paso.value = 0
   direccion.value = 'slide-izq'
 }
@@ -112,21 +99,23 @@ function cerrarEncuesta() {
 // ---------- Modal de detalle ----------
 const detalle = ref(null)
 
-const camposDetalle = [
-  { titulo: '1. ¿Con qué frecuencia se automedica?', clave: 'frecuencia_automedicacion' },
-  { titulo: '2. ¿Qué edad tienes?', clave: 'rango_edad' },
-  { titulo: '3. Género', clave: 'genero' },
-  { titulo: '4. ¿Con cuál o cuáles antibióticos se ha automedicado?', clave: 'antibioticos', multiple: true },
-  { titulo: '5. ¿Cuáles de los siguientes síntomas ha notado?', clave: 'sintomas', multiple: true },
-  { titulo: '6. ¿Cuál es su grado de educación?', clave: 'grado_educacion' },
-  { titulo: '7. ¿Cuál es su lugar de residencia?', clave: 'lugar_residencia' },
-  { titulo: '8. ¿Por qué se automedica?', clave: 'motivo_automedicacion' },
-]
+const camposDetalle = computed(() =>
+  preguntas.value.map((p, i) => ({
+    titulo: `${i + 1}. ${p.titulo}`,
+    clave: p.clave,
+    multiple: p.tipo === 'multiple',
+  }))
+)
 
+// La frecuencia conserva su código de color en chips y tarjetas
 function colorFrecuencia(f) {
   if (f === 'Frecuentemente') return 'bg-amber-50 text-amber-700'
   if (f === 'Nunca') return 'bg-slate-100 text-slate-500'
   return 'bg-teal-50 text-teal-700'
+}
+
+function esChipFrecuencia(pregunta) {
+  return pregunta?.clave === 'frecuencia_automedicacion'
 }
 
 watch(detalle, (abierto) => {
@@ -143,19 +132,14 @@ async function eliminarRegistro() {
   eliminando.value = true
 
   // Auditoría: quién eliminó el registro
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const meta = session?.user?.user_metadata ?? {}
-  const deleted_by_nombre = [meta.nombre, meta.apellido].filter(Boolean).join(' ') || '—'
-  const deleted_by_matricula = meta.matricula || session?.user?.email?.split('@')[0] || '—'
+  const { nombre, matricula } = await usuarioActual()
 
   const { error } = await supabase
     .from('encuestas')
     .update({
       deleted_at: new Date().toISOString(),
-      deleted_by_nombre,
-      deleted_by_matricula,
+      deleted_by_nombre: nombre,
+      deleted_by_matricula: matricula,
     })
     .eq('id', detalle.value.id)
   eliminando.value = false
@@ -187,21 +171,34 @@ async function cargar() {
   encuestas.value = data ?? []
 }
 
+async function cargarTodo() {
+  cargandoPreguntas.value = true
+  try {
+    preguntas.value = await cargarPreguntas(false)
+  } catch (e) {
+    errorMsg.value = 'No se pudieron cargar las preguntas: ' + (e.message ?? e)
+  }
+  cargandoPreguntas.value = false
+  await cargar()
+}
+
 async function guardar() {
   errorMsg.value = ''
   guardando.value = true
 
   // Quién registra el dato (matrícula + nombre del usuario autenticado)
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const meta = session?.user?.user_metadata ?? {}
-  const registrado_nombre = [meta.nombre, meta.apellido].filter(Boolean).join(' ') || '—'
-  const registrado_matricula = meta.matricula || session?.user?.email?.split('@')[0] || '—'
+  const { nombre, matricula } = await usuarioActual()
+
+  // Solo se guardan las preguntas con respuesta
+  const respuestas = {}
+  for (const p of preguntas.value) {
+    const valores = formulario[p.clave] ?? []
+    if (valores.length) respuestas[p.clave] = [...valores]
+  }
 
   const { error } = await supabase
     .from('encuestas')
-    .insert({ ...formulario, registrado_nombre, registrado_matricula })
+    .insert({ respuestas, registrado_nombre: nombre, registrado_matricula: matricula })
   guardando.value = false
 
   if (error) {
@@ -209,7 +206,6 @@ async function guardar() {
     return
   }
 
-  Object.assign(formulario, { ...formularioVacio, antibioticos: [], sintomas: [] })
   paso.value = 0
   direccion.value = 'slide-izq'
   guardado.value = true
@@ -224,8 +220,34 @@ function fechaCorta(iso) {
   })
 }
 
+// ---------- Exportación (Excel / PDF / Word) ----------
+const menuExport = ref(false)
+const exportando = ref(false)
+
+async function exportar(tipo) {
+  menuExport.value = false
+  if (!encuestas.value.length) return
+  exportando.value = true
+  try {
+    if (tipo === 'excel') await exportarExcel(encuestas.value, preguntas.value)
+    else if (tipo === 'pdf') await exportarPDF(encuestas.value, preguntas.value)
+    else await exportarWord(encuestas.value, preguntas.value)
+  } catch (e) {
+    errorMsg.value = 'No se pudo exportar: ' + (e.message ?? e)
+  } finally {
+    exportando.value = false
+  }
+}
+
+// Columnas que se muestran en el resumen (tabla y tarjetas móviles)
+const columnasResumen = computed(() => preguntas.value.slice(0, 4))
+
+function valorResumen(encuesta, pregunta) {
+  return (encuesta.respuestas?.[pregunta?.clave] ?? []).join(', ')
+}
+
 onMounted(() => {
-  cargar()
+  cargarTodo()
   window.addEventListener('keydown', alPresionarTecla)
 })
 </script>
@@ -239,12 +261,71 @@ onMounted(() => {
           Respuestas del cuestionario sobre automedicación con antibióticos
         </p>
       </div>
-      <button type="button" class="btn-primary" @click="mostrarFormulario = true">
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Nueva encuesta
-      </button>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Exportar -->
+        <div class="relative">
+          <button
+            type="button"
+            class="btn-outline"
+            :disabled="!encuestas.length || exportando"
+            @click="menuExport = !menuExport"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {{ exportando ? 'Exportando…' : 'Exportar' }}
+            <svg
+              class="h-3.5 w-3.5 transition-transform"
+              :class="menuExport ? 'rotate-180' : ''"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <template v-if="menuExport">
+            <div class="fixed inset-0 z-10" @click="menuExport = false"></div>
+            <div class="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-medium text-slate-600 transition hover:bg-teal-50 hover:text-teal-700"
+                @click="exportar('excel')"
+              >
+                <span class="grid h-6 w-6 place-items-center rounded-lg bg-emerald-50 text-[10px] font-bold text-emerald-600">XLS</span>
+                Excel (.xlsx)
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-medium text-slate-600 transition hover:bg-teal-50 hover:text-teal-700"
+                @click="exportar('pdf')"
+              >
+                <span class="grid h-6 w-6 place-items-center rounded-lg bg-rose-50 text-[10px] font-bold text-rose-500">PDF</span>
+                PDF (.pdf)
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-medium text-slate-600 transition hover:bg-teal-50 hover:text-teal-700"
+                @click="exportar('word')"
+              >
+                <span class="grid h-6 w-6 place-items-center rounded-lg bg-sky-50 text-[10px] font-bold text-sky-600">DOC</span>
+                Word (.docx)
+              </button>
+            </div>
+          </template>
+        </div>
+        <button
+          type="button"
+          class="btn-primary"
+          :disabled="cargandoPreguntas || !preguntas.length"
+          @click="mostrarFormulario = true"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Nueva encuesta
+        </button>
+      </div>
     </div>
 
     <!-- ============ Encuesta a pantalla completa (modo paciente) ============ -->
@@ -317,7 +398,7 @@ onMounted(() => {
                         type="button"
                         class="group flex w-full items-center justify-between gap-3 rounded-2xl border-2 px-5 py-4 text-left text-[15px] font-medium transition duration-200 active:scale-[.99] sm:text-base"
                         :class="
-                          formulario[pasoActual.campo] === op
+                          formulario[pasoActual.clave]?.[0] === op
                             ? 'border-teal-600 bg-teal-50 text-teal-800 shadow-md shadow-teal-600/10'
                             : 'border-slate-300 bg-white text-slate-700 hover:border-teal-500 hover:bg-teal-50/50'
                         "
@@ -327,7 +408,7 @@ onMounted(() => {
                         <span
                           class="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition duration-200"
                           :class="
-                            formulario[pasoActual.campo] === op
+                            formulario[pasoActual.clave]?.[0] === op
                               ? 'border-teal-600 bg-teal-600 text-white'
                               : 'border-slate-400 bg-white text-transparent group-hover:border-teal-500'
                           "
@@ -346,12 +427,12 @@ onMounted(() => {
                           type="checkbox"
                           class="peer sr-only"
                           :value="op"
-                          v-model="formulario[pasoActual.campo]"
+                          v-model="formulario[pasoActual.clave]"
                         />
                         <span
                           class="inline-block rounded-full border px-5 py-2.5 text-[15px] font-medium transition duration-200 active:scale-95 sm:text-base"
                           :class="
-                            pasoActual.campo === 'antibioticos'
+                            paso % 2 === 0
                               ? 'border-slate-300 bg-slate-50 text-slate-600 hover:border-teal-500 peer-checked:border-teal-600 peer-checked:bg-teal-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-teal-600/25'
                               : 'border-slate-300 bg-slate-50 text-slate-600 hover:border-sky-500 peer-checked:border-sky-600 peer-checked:bg-sky-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-sky-600/25'
                           "
@@ -482,77 +563,49 @@ onMounted(() => {
           class="w-full rounded-2xl border border-slate-200/70 bg-white p-4 text-left shadow-sm transition duration-200 hover:border-teal-200 hover:shadow-md active:scale-[.99]"
           @click="detalle = e"
         >
-          <!-- Cabecera: frecuencia + fecha -->
+          <!-- Cabecera: primera pregunta + fecha -->
           <div class="flex items-center justify-between gap-3">
             <span
               class="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-              :class="colorFrecuencia(e.frecuencia_automedicacion)"
+              :class="esChipFrecuencia(preguntas[0]) ? colorFrecuencia(e.respuestas?.[preguntas[0]?.clave]?.[0]) : 'bg-teal-50 text-teal-700'"
             >
-              {{ e.frecuencia_automedicacion }}
+              {{ valorResumen(e, preguntas[0]) || '—' }}
             </span>
             <span class="text-[11px] font-medium text-slate-400">
               {{ fechaCorta(e.created_at) }}
             </span>
           </div>
 
-          <!-- Datos del paciente en grid 2x2 -->
+          <!-- Datos en grid 2x2 (siguientes preguntas) -->
           <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
-            <div>
-              <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Género</p>
-              <p class="mt-0.5 text-[13px] font-medium text-slate-700">{{ e.genero }}</p>
-            </div>
-            <div>
-              <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Edad</p>
-              <p class="mt-0.5 text-[13px] font-medium text-slate-700">{{ e.rango_edad }}</p>
-            </div>
-            <div>
-              <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Educación</p>
-              <p class="mt-0.5 text-[13px] font-medium text-slate-700">{{ e.grado_educacion }}</p>
-            </div>
-            <div>
-              <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Residencia</p>
-              <p class="mt-0.5 truncate text-[13px] font-medium text-slate-700">{{ e.lugar_residencia }}</p>
-            </div>
-          </div>
-
-          <!-- Antibióticos y síntomas -->
-          <div class="mt-3 space-y-2 border-t border-slate-100 pt-3">
-            <div class="flex items-start gap-2">
-              <span class="mt-0.5 w-20 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                Antibióticos
-              </span>
-              <div class="flex flex-wrap gap-1">
-                <template v-if="e.antibioticos?.length">
-                  <span v-for="a in e.antibioticos" :key="a" class="chip">{{ a }}</span>
-                </template>
-                <span v-else class="text-[11px] text-slate-300">—</span>
-              </div>
-            </div>
-            <div class="flex items-start gap-2">
-              <span class="mt-0.5 w-20 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                Síntomas
-              </span>
-              <div class="flex flex-wrap gap-1">
-                <template v-if="e.sintomas?.length">
+            <div v-for="p in preguntas.slice(1, 5)" :key="p.clave">
+              <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                {{ etiquetaDe(p) }}
+              </p>
+              <div v-if="p.tipo === 'multiple'" class="mt-0.5 flex flex-wrap gap-1">
+                <template v-if="e.respuestas?.[p.clave]?.length">
                   <span
-                    v-for="s in e.sintomas"
-                    :key="s"
-                    class="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-700"
-                  >
-                    {{ s }}
+                    v-for="v in e.respuestas[p.clave].slice(0, 3)"
+                    :key="v"
+                    class="chip"
+                  >{{ v }}</span>
+                  <span v-if="e.respuestas[p.clave].length > 3" class="text-[11px] font-medium text-slate-400">
+                    +{{ e.respuestas[p.clave].length - 3 }}
                   </span>
                 </template>
                 <span v-else class="text-[11px] text-slate-300">—</span>
               </div>
+              <p v-else class="mt-0.5 truncate text-[13px] font-medium text-slate-700">
+                {{ valorResumen(e, p) || '—' }}
+              </p>
             </div>
           </div>
 
-          <!-- Motivo + ver detalle -->
-          <div class="mt-3 flex items-center justify-between gap-3">
+          <!-- Registrador + ver detalle -->
+          <div class="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
             <p class="min-w-0 truncate text-[11px] text-slate-400">
-              <span class="font-semibold text-slate-500">Motivo:</span> {{ e.motivo_automedicacion }}
               <template v-if="e.registrado_matricula">
-                · <span class="font-semibold text-slate-500">Reg:</span> {{ e.registrado_matricula }}
+                <span class="font-semibold text-slate-500">Reg:</span> {{ e.registrado_matricula }}
               </template>
             </p>
             <span class="flex shrink-0 items-center gap-0.5 text-[11px] font-semibold text-teal-600">
@@ -571,10 +624,7 @@ onMounted(() => {
           <thead>
             <tr class="border-b border-slate-100 bg-slate-50/80">
               <th class="th">Fecha</th>
-              <th class="th">Género</th>
-              <th class="th">Edad</th>
-              <th class="th">Frecuencia</th>
-              <th class="th">Antibióticos</th>
+              <th v-for="p in columnasResumen" :key="p.clave" class="th">{{ etiquetaDe(p) }}</th>
               <th class="th">Registrado por</th>
             </tr>
           </thead>
@@ -586,26 +636,19 @@ onMounted(() => {
               @click="detalle = e"
             >
               <td class="td whitespace-nowrap text-slate-400">{{ fechaCorta(e.created_at) }}</td>
-              <td class="td whitespace-nowrap">{{ e.genero }}</td>
-              <td class="td whitespace-nowrap">{{ e.rango_edad }}</td>
-              <td class="td whitespace-nowrap">
+              <td
+                v-for="p in columnasResumen"
+                :key="p.clave"
+                class="td max-w-[220px] whitespace-nowrap"
+              >
                 <span
+                  v-if="esChipFrecuencia(p)"
                   class="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                  :class="colorFrecuencia(e.frecuencia_automedicacion)"
+                  :class="colorFrecuencia(e.respuestas?.[p.clave]?.[0])"
                 >
-                  {{ e.frecuencia_automedicacion }}
+                  {{ e.respuestas?.[p.clave]?.[0] ?? '—' }}
                 </span>
-              </td>
-              <td class="td">
-                <div class="flex max-w-[200px] flex-wrap gap-1">
-                  <template v-if="e.antibioticos?.length">
-                    <span v-for="a in e.antibioticos.slice(0, 2)" :key="a" class="chip">{{ a }}</span>
-                    <span v-if="e.antibioticos.length > 2" class="text-[11px] font-medium text-slate-400">
-                      +{{ e.antibioticos.length - 2 }}
-                    </span>
-                  </template>
-                  <span v-else class="text-slate-300">—</span>
-                </div>
+                <span v-else class="block truncate">{{ valorResumen(e, p) || '—' }}</span>
               </td>
               <td class="td whitespace-nowrap">
                 <template v-if="e.registrado_matricula">
@@ -660,17 +703,17 @@ onMounted(() => {
           </div>
 
           <div class="space-y-4">
-            <div v-for="c in camposDetalle" :key="c.clave">
+            <div v-for="(c, i) in camposDetalle" :key="c.clave">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 {{ c.titulo }}
               </p>
               <div v-if="c.multiple" class="mt-1.5 flex flex-wrap gap-1.5">
-                <template v-if="detalle[c.clave]?.length">
+                <template v-if="detalle.respuestas?.[c.clave]?.length">
                   <span
-                    v-for="v in detalle[c.clave]"
+                    v-for="v in detalle.respuestas[c.clave]"
                     :key="v"
                     class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-                    :class="c.clave === 'sintomas' ? 'bg-sky-50 text-sky-700' : 'bg-teal-50 text-teal-700'"
+                    :class="i % 2 === 0 ? 'bg-teal-50 text-teal-700' : 'bg-sky-50 text-sky-700'"
                   >
                     {{ v }}
                   </span>
@@ -678,7 +721,7 @@ onMounted(() => {
                 <span v-else class="text-sm text-slate-300">—</span>
               </div>
               <p v-else class="mt-1 text-sm font-medium text-slate-700">
-                {{ detalle[c.clave] }}
+                {{ detalle.respuestas?.[c.clave]?.[0] ?? '—' }}
               </p>
             </div>
           </div>

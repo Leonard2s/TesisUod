@@ -1,25 +1,24 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabaseClient'
+import { cargarPreguntas, etiquetaDe, valoresDe } from '../lib/preguntas'
 import PieChart from '../components/PieChart.vue'
 import BarChart from '../components/BarChart.vue'
-import {
-  FRECUENCIAS,
-  RANGOS_EDAD,
-  GENEROS,
-  ANTIBIOTICOS,
-  SINTOMAS,
-  GRADOS_EDUCACION,
-  LUGARES_RESIDENCIA,
-  MOTIVOS,
-} from '../lib/opciones'
 
+const preguntas = ref([])
 const encuestas = ref([])
 const cargando = ref(true)
 const errorMsg = ref('')
 
 async function cargar() {
   cargando.value = true
+  errorMsg.value = ''
+  try {
+    preguntas.value = await cargarPreguntas(false)
+  } catch (e) {
+    errorMsg.value = 'No se pudieron cargar las preguntas: ' + (e.message ?? e)
+  }
+
   const { data, error } = await supabase
     .from('encuestas')
     .select('*')
@@ -33,14 +32,13 @@ async function cargar() {
   encuestas.value = data ?? []
 }
 
-// Cuenta ocurrencias de un campo; si el campo es un arreglo cuenta cada
-// elemento. Con `orden` las etiquetas siguen el orden del cuestionario;
+// Cuenta ocurrencias de una pregunta; las de selección múltiple cuentan
+// cada valor. Con `orden` las etiquetas siguen el orden del cuestionario;
 // sin él se ordenan de mayor a menor frecuencia.
 function contarPor(items, clave, orden = null) {
   const conteo = {}
   for (const item of items) {
-    const valor = item[clave]
-    for (const v of Array.isArray(valor) ? valor : [valor]) {
+    for (const v of valoresDe(item, clave)) {
       if (v) conteo[v] = (conteo[v] ?? 0) + 1
     }
   }
@@ -65,52 +63,75 @@ function topDe(clave) {
   return labels.length ? { nombre: labels[0], cantidad: values[0] } : null
 }
 
+// Preguntas clave de la tesis que tienen tarjetas/gráficas destacadas.
+// Si se eliminan desde Configuración, su sección desaparece con gracia.
+const pFrecuencia = computed(() => preguntas.value.find((p) => p.clave === 'frecuencia_automedicacion'))
+const pGenero = computed(() => preguntas.value.find((p) => p.clave === 'genero'))
+const pAntibioticos = computed(() => preguntas.value.find((p) => p.clave === 'antibioticos'))
+const pSintomas = computed(() => preguntas.value.find((p) => p.clave === 'sintomas'))
+const pEdad = computed(() => preguntas.value.find((p) => p.clave === 'rango_edad'))
+
 const stats = computed(() => {
   const n = encuestas.value.length
-  const nunca = encuestas.value.filter(
-    (e) => e.frecuencia_automedicacion === 'Nunca'
-  ).length
-  const pctAutomedican = n ? Math.round(((n - nunca) / n) * 100) + ' %' : '—'
-  const antibiotico = topDe('antibioticos')
-  const sintoma = topDe('sintomas')
-
-  return [
+  const tarjetas = [
     { titulo: 'Respuestas', valor: n, detalle: 'encuestas registradas' },
-    { titulo: 'Se automedican', valor: pctAutomedican, detalle: 'rara vez o frecuentemente' },
-    {
+  ]
+
+  if (pFrecuencia.value) {
+    const nunca = encuestas.value.filter((e) =>
+      valoresDe(e, 'frecuencia_automedicacion').includes('Nunca')
+    ).length
+    const pctAutomedican = n ? Math.round(((n - nunca) / n) * 100) + ' %' : '—'
+    tarjetas.push({
+      titulo: 'Se automedican',
+      valor: pctAutomedican,
+      detalle: 'rara vez o frecuentemente',
+    })
+  }
+
+  if (pAntibioticos.value) {
+    const antibiotico = topDe('antibioticos')
+    tarjetas.push({
       titulo: 'Antibiótico más usado',
       valor: antibiotico?.nombre ?? '—',
       detalle: antibiotico ? antibiotico.cantidad + ' menciones' : 'sin datos',
-    },
-    {
+    })
+  }
+
+  if (pSintomas.value) {
+    const sintoma = topDe('sintomas')
+    tarjetas.push({
       titulo: 'Síntoma más frecuente',
       valor: sintoma?.nombre ?? '—',
       detalle: sintoma ? sintoma.cantidad + ' menciones' : 'sin datos',
-    },
-  ]
+    })
+  }
+
+  return tarjetas
 })
 
 const pieFrecuencia = computed(() =>
-  contarPor(encuestas.value, 'frecuencia_automedicacion', FRECUENCIAS)
+  pFrecuencia.value
+    ? contarPor(encuestas.value, 'frecuencia_automedicacion', pFrecuencia.value.opciones)
+    : null
 )
 
 const pieGenero = computed(() =>
-  contarPor(encuestas.value, 'genero', GENEROS)
+  pGenero.value
+    ? contarPor(encuestas.value, 'genero', pGenero.value.opciones)
+    : null
 )
 
-const preguntasBarras = [
-  { titulo: 'Rango de edad', clave: 'rango_edad', orden: RANGOS_EDAD },
-  { titulo: 'Antibióticos usados', clave: 'antibioticos', orden: ANTIBIOTICOS },
-  { titulo: 'Síntomas notados', clave: 'sintomas', orden: SINTOMAS },
-  { titulo: 'Grado de educación', clave: 'grado_educacion', orden: GRADOS_EDUCACION },
-  { titulo: 'Lugar de residencia', clave: 'lugar_residencia', orden: LUGARES_RESIDENCIA },
-  { titulo: 'Motivo de automedicación', clave: 'motivo_automedicacion', orden: MOTIVOS },
-]
+// Barras: todas las preguntas excepto las que ya tienen gráfica de pie
+const CLAVES_PIE = ['frecuencia_automedicacion', 'genero']
+const preguntasBarras = computed(() =>
+  preguntas.value.filter((p) => !CLAVES_PIE.includes(p.clave))
+)
 
 const graficasEncuesta = computed(() =>
-  preguntasBarras.map((p) => ({
+  preguntasBarras.value.map((p) => ({
     ...p,
-    ...contarPor(encuestas.value, p.clave, p.orden),
+    ...contarPor(encuestas.value, p.clave, p.opciones),
   }))
 )
 
@@ -149,31 +170,52 @@ const medidas = computed(() => {
   const n = encuestas.value.length
   if (!n) return []
 
-  const mediaEdad =
-    encuestas.value.reduce(
-      (acc, e) => acc + (PUNTOS_MEDIOS_EDAD[e.rango_edad] ?? 0),
-      0
-    ) / n
+  const tarjetas = []
 
-  // Mediana: primer rango donde la frecuencia acumulada llega a n/2
-  const conteoEdad = contarPor(encuestas.value, 'rango_edad', RANGOS_EDAD)
-  let acumulado = 0
-  let medianaEdad = '—'
-  for (let i = 0; i < conteoEdad.labels.length; i++) {
-    acumulado += conteoEdad.values[i]
-    if (acumulado >= n / 2) {
-      medianaEdad = conteoEdad.labels[i]
-      break
+  if (pEdad.value) {
+    // Media: solo sobre los rangos con punto medio conocido
+    const edades = encuestas.value
+      .map((e) => valoresDe(e, 'rango_edad')[0])
+      .filter((v) => v in PUNTOS_MEDIOS_EDAD)
+    const mediaEdad = edades.length
+      ? edades.reduce((acc, v) => acc + PUNTOS_MEDIOS_EDAD[v], 0) / edades.length
+      : null
+
+    // Mediana: primer rango donde la frecuencia acumulada llega a la mitad
+    const conteoEdad = contarPor(encuestas.value, 'rango_edad', pEdad.value.opciones)
+    const totalEdad = conteoEdad.values.reduce((a, b) => a + b, 0)
+    let acumulado = 0
+    let medianaEdad = '—'
+    for (let i = 0; i < conteoEdad.labels.length; i++) {
+      acumulado += conteoEdad.values[i]
+      if (totalEdad && acumulado >= totalEdad / 2) {
+        medianaEdad = conteoEdad.labels[i]
+        break
+      }
     }
-  }
-  const modaEdad = topDe('rango_edad')
+    const modaEdad = topDe('rango_edad')
 
-  return [
-    { titulo: 'Media de edad', valor: '~' + mediaEdad.toFixed(1) + ' años', detalle: 'por puntos medios de rango' },
-    { titulo: 'Mediana de edad', valor: medianaEdad, detalle: 'rango central' },
-    { titulo: 'Moda de edad', valor: modaEdad?.nombre ?? '—', detalle: modaEdad ? modaEdad.cantidad + ' respuestas' : 'sin datos' },
-    { titulo: 'Tendencia', valor: tendencia.value.etiqueta, detalle: tendencia.value.detalle },
-  ]
+    tarjetas.push(
+      {
+        titulo: 'Media de edad',
+        valor: mediaEdad == null ? '—' : '~' + mediaEdad.toFixed(1) + ' años',
+        detalle: 'por puntos medios de rango',
+      },
+      { titulo: 'Mediana de edad', valor: medianaEdad, detalle: 'rango central' },
+      {
+        titulo: 'Moda de edad',
+        valor: modaEdad?.nombre ?? '—',
+        detalle: modaEdad ? modaEdad.cantidad + ' respuestas' : 'sin datos',
+      }
+    )
+  }
+
+  tarjetas.push({
+    titulo: 'Tendencia',
+    valor: tendencia.value.etiqueta,
+    detalle: tendencia.value.detalle,
+  })
+  return tarjetas
 })
 
 // Respuestas agrupadas por mes para la gráfica de tendencia
@@ -198,29 +240,20 @@ const respuestasPorMes = computed(() => {
 })
 
 // ---------- Tablas de frecuencia ----------
-const preguntasTabla = [
-  { titulo: '1. Frecuencia de automedicación', clave: 'frecuencia_automedicacion', orden: FRECUENCIAS },
-  { titulo: '2. Rango de edad', clave: 'rango_edad', orden: RANGOS_EDAD },
-  { titulo: '3. Género', clave: 'genero', orden: GENEROS },
-  { titulo: '4. Antibióticos usados', clave: 'antibioticos', orden: ANTIBIOTICOS, multiple: true },
-  { titulo: '5. Síntomas notados', clave: 'sintomas', orden: SINTOMAS, multiple: true },
-  { titulo: '6. Grado de educación', clave: 'grado_educacion', orden: GRADOS_EDUCACION },
-  { titulo: '7. Lugar de residencia', clave: 'lugar_residencia', orden: LUGARES_RESIDENCIA },
-  { titulo: '8. Motivo de automedicación', clave: 'motivo_automedicacion', orden: MOTIVOS },
-]
-
 const tablasFrecuencia = computed(() =>
-  preguntasTabla.map((p) => {
-    const { labels, values } = contarPor(encuestas.value, p.clave, p.orden)
+  preguntas.value.map((p, i) => {
+    const { labels, values } = contarPor(encuestas.value, p.clave, p.opciones)
     const total = values.reduce((a, b) => a + b, 0)
     const max = Math.max(0, ...values)
     return {
-      ...p,
-      filas: labels.map((label, i) => ({
+      titulo: `${i + 1}. ${etiquetaDe(p)}`,
+      clave: p.clave,
+      multiple: p.tipo === 'multiple',
+      filas: labels.map((label, j) => ({
         opcion: label,
-        n: values[i],
-        pct: total ? Math.round((values[i] / total) * 100) : 0,
-        esModa: values[i] === max && max > 0,
+        n: values[j],
+        pct: total ? Math.round((values[j] / total) * 100) : 0,
+        esModa: values[j] === max && max > 0,
       })),
     }
   })
@@ -294,16 +327,16 @@ onMounted(cargar)
       </div>
 
       <!-- Gráficas destacadas -->
-      <div class="mb-8 grid gap-5 lg:grid-cols-2">
-        <div class="card anim-aparecer !p-4 sm:!p-6" style="animation-delay: 160ms">
+      <div v-if="pieFrecuencia || pieGenero" class="mb-8 grid gap-5 lg:grid-cols-2">
+        <div v-if="pieFrecuencia" class="card anim-aparecer !p-4 sm:!p-6" style="animation-delay: 160ms">
           <h2 class="mb-4 text-base font-bold tracking-tight text-slate-800 sm:text-lg">
-            Frecuencia de automedicación
+            {{ etiquetaDe(pFrecuencia) }}
           </h2>
           <PieChart :labels="pieFrecuencia.labels" :values="pieFrecuencia.values" />
         </div>
-        <div class="card anim-aparecer !p-4 sm:!p-6" style="animation-delay: 220ms">
+        <div v-if="pieGenero" class="card anim-aparecer !p-4 sm:!p-6" style="animation-delay: 220ms">
           <h2 class="mb-4 text-base font-bold tracking-tight text-slate-800 sm:text-lg">
-            Distribución por género
+            {{ etiquetaDe(pGenero) }}
           </h2>
           <PieChart :labels="pieGenero.labels" :values="pieGenero.values" />
         </div>
@@ -340,7 +373,7 @@ onMounted(cargar)
           class="card anim-aparecer !p-4 sm:!p-6"
           :style="{ animationDelay: 280 + i * 60 + 'ms' }"
         >
-          <h3 class="mb-3 text-[13px] font-bold text-slate-600">{{ g.titulo }}</h3>
+          <h3 class="mb-3 text-[13px] font-bold text-slate-600">{{ etiquetaDe(g) }}</h3>
           <BarChart
             :labels="g.labels"
             :datasets="[{ label: 'Respuestas', data: g.values }]"

@@ -5,7 +5,79 @@
 
 const LS_SESION = 'tesis-uod:sesion'
 const LS_ENCUESTAS = 'tesis-uod:encuestas'
+const LS_PREGUNTAS = 'tesis-uod:preguntas'
 const LS_USUARIOS = 'tesis-uod:usuarios'
+
+// Las 8 preguntas del cuestionario (igual que el seed de Supabase)
+const PREGUNTAS_SEMILLA = [
+  {
+    id: 1, clave: 'frecuencia_automedicacion', titulo: '¿Con qué frecuencia se automedica?',
+    etiqueta: 'Frecuencia de automedicación', tipo: 'unica',
+    opciones: ['Rara vez', 'Frecuentemente', 'Nunca'], orden: 1,
+  },
+  {
+    id: 2, clave: 'rango_edad', titulo: '¿Qué edad tienes?',
+    etiqueta: 'Rango de edad', tipo: 'unica',
+    opciones: ['De 18 a 29 años', 'De 30 a 39 años', 'De 40 a 49 años', 'De 50 a 59 años', 'De 60 años o más'],
+    orden: 2,
+  },
+  {
+    id: 3, clave: 'genero', titulo: 'Género',
+    etiqueta: 'Género', tipo: 'unica',
+    opciones: ['Mujer', 'Hombre'], orden: 3,
+  },
+  {
+    id: 4, clave: 'antibioticos', titulo: '¿Con cuál o cuáles antibióticos se ha automedicado?',
+    etiqueta: 'Antibióticos usados', tipo: 'multiple',
+    opciones: ['Azitromicina', 'Amoxicilina', 'Cefalexina', 'Metronidazol'], orden: 4,
+  },
+  {
+    id: 5, clave: 'sintomas', titulo: '¿Cuáles de los siguientes síntomas ha notado?',
+    etiqueta: 'Síntomas notados', tipo: 'multiple',
+    opciones: ['Sangrado', 'Inflamación', 'Movilidad dental', 'Sarro', 'Dolor'], orden: 5,
+  },
+  {
+    id: 6, clave: 'grado_educacion', titulo: '¿Cuál es su grado de educación?',
+    etiqueta: 'Grado de educación', tipo: 'unica',
+    opciones: ['Nivel primario', 'Nivel secundario', 'Universitario', 'Especialidad'], orden: 6,
+  },
+  {
+    id: 7, clave: 'lugar_residencia', titulo: '¿Cuál es su lugar de residencia?',
+    etiqueta: 'Lugar de residencia', tipo: 'unica',
+    opciones: [
+      'Pueblo de una provincia', 'Campo de una provincia', 'Urbanización',
+      'Ciudad de la capital', 'Barrio', 'Residencial',
+    ],
+    orden: 7,
+  },
+  {
+    id: 8, clave: 'motivo_automedicacion', titulo: '¿Por qué se automedica?',
+    etiqueta: 'Motivo de automedicación', tipo: 'unica',
+    opciones: ['Recomendación de tercera persona', 'Falta de tiempo para ir a consulta', 'Por prevención'],
+    orden: 8,
+  },
+].map((p) => ({
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  deleted_at: null,
+  deleted_by_nombre: null,
+  deleted_by_matricula: null,
+  ...p,
+}))
+
+function cargarPreguntasDemo() {
+  try {
+    const guardadas = JSON.parse(localStorage.getItem(LS_PREGUNTAS) || 'null')
+    if (Array.isArray(guardadas) && guardadas.length) return guardadas
+  } catch {
+    // localStorage corrupto: se reinicia con la semilla
+  }
+  return [...PREGUNTAS_SEMILLA]
+}
+
+function guardarPreguntasDemo(preguntas) {
+  localStorage.setItem(LS_PREGUNTAS, JSON.stringify(preguntas))
+}
 
 const ENCUESTAS_SEMILLA = [
   {
@@ -67,6 +139,17 @@ const ENCUESTAS_SEMILLA = [
 ].map((e) => ({
   registrado_nombre: 'Encuestadora demo',
   registrado_matricula: 'demo-01',
+  // respuestas en el formato nuevo (jsonb): { clave: [valores] }
+  respuestas: {
+    frecuencia_automedicacion: [e.frecuencia_automedicacion],
+    rango_edad: [e.rango_edad],
+    genero: [e.genero],
+    antibioticos: [...e.antibioticos],
+    sintomas: [...e.sintomas],
+    grado_educacion: [e.grado_educacion],
+    lugar_residencia: [e.lugar_residencia],
+    motivo_automedicacion: [e.motivo_automedicacion],
+  },
   ...e,
 }))
 
@@ -155,7 +238,7 @@ function crearAuth() {
 }
 
 function crearConsulta(datos, { persistir = null, siguienteId = { valor: 1 } } = {}) {
-  let orden = null
+  const ordenes = []
   const filtros = []
 
   const coincide = (fila) =>
@@ -183,7 +266,7 @@ function crearConsulta(datos, { persistir = null, siguienteId = { valor: 1 } } =
       return consulta
     },
     order(columna, { ascending = true } = {}) {
-      orden = { columna, ascending }
+      ordenes.push({ columna, ascending })
       return consulta
     },
     insert(fila) {
@@ -210,12 +293,14 @@ function crearConsulta(datos, { persistir = null, siguienteId = { valor: 1 } } =
     },
     then(resolve, reject) {
       let res = datos.filter(coincide)
-      if (orden) {
-        const { columna, ascending } = orden
+      if (ordenes.length) {
         res = [...res].sort((a, b) => {
-          if (a[columna] === b[columna]) return 0
-          const menor = a[columna] < b[columna]
-          return (menor ? -1 : 1) * (ascending ? 1 : -1)
+          for (const { columna, ascending } of ordenes) {
+            if (a[columna] === b[columna]) continue
+            const menor = a[columna] < b[columna]
+            return (menor ? -1 : 1) * (ascending ? 1 : -1)
+          }
+          return 0
         })
       }
       return Promise.resolve({ data: res, error: null }).then(resolve, reject)
@@ -229,12 +314,22 @@ export function crearSupabaseDemo() {
   const siguienteId = {
     valor: Math.max(0, ...encuestas.map((e) => e.id ?? 0)) + 1,
   }
+  const preguntas = cargarPreguntasDemo()
+  const siguienteIdPregunta = {
+    valor: Math.max(0, ...preguntas.map((p) => p.id ?? 0)) + 1,
+  }
 
   return {
     auth: crearAuth(),
     from(tabla) {
       if (tabla === 'encuestas') {
         return crearConsulta(encuestas, { persistir: guardarEncuestas, siguienteId })
+      }
+      if (tabla === 'preguntas') {
+        return crearConsulta(preguntas, {
+          persistir: guardarPreguntasDemo,
+          siguienteId: siguienteIdPregunta,
+        })
       }
       return crearConsulta([])
     },

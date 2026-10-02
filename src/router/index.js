@@ -29,6 +29,11 @@ const routes = [
     name: 'papelera',
     component: () => import('../views/PapeleraView.vue'),
   },
+  {
+    path: '/configuracion',
+    name: 'configuracion',
+    component: () => import('../views/ConfiguracionView.vue'),
+  },
   { path: '/', redirect: '/datos' },
   { path: '/:pathMatch(.*)*', redirect: '/datos' },
 ]
