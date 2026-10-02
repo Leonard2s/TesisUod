@@ -9,6 +9,7 @@ const COOKIE_SESION = 'tesis-uod-sesion'
 const LS_ENCUESTAS = 'tesis-uod:encuestas'
 const LS_PREGUNTAS = 'tesis-uod:preguntas'
 const LS_USUARIOS = 'tesis-uod:usuarios'
+const LS_ACCESOS = 'tesis-uod:accesos'
 
 // Las 8 preguntas del cuestionario (igual que el seed de Supabase)
 const PREGUNTAS_SEMILLA = [
@@ -79,6 +80,36 @@ function cargarPreguntasDemo() {
 
 function guardarPreguntasDemo(preguntas) {
   localStorage.setItem(LS_PREGUNTAS, JSON.stringify(preguntas))
+}
+
+// Historial de accesos para la pantalla de auditoría
+const ACCESOS_SEMILLA = [
+  {
+    id: 1, correo: 'demo@tesis-uod.local', nombre: 'Encuestadora Demo', matricula: 'demo-01',
+    inicio: '2026-09-29T08:30:00Z', fin: '2026-09-29T12:45:00Z',
+  },
+  {
+    id: 2, correo: 'ayudante@tesis-uod.local', nombre: 'Ayudante Demo', matricula: 'demo-02',
+    inicio: '2026-09-30T09:05:00Z', fin: null,
+  },
+  {
+    id: 3, correo: 'demo@tesis-uod.local', nombre: 'Encuestadora Demo', matricula: 'demo-01',
+    inicio: '2026-10-01T15:10:00Z', fin: null,
+  },
+].map((a) => ({ created_at: a.inicio, ...a }))
+
+function cargarAccesos() {
+  try {
+    const guardados = JSON.parse(localStorage.getItem(LS_ACCESOS) || 'null')
+    if (Array.isArray(guardados)) return guardados
+  } catch {
+    // localStorage corrupto: se reinicia con la semilla
+  }
+  return [...ACCESOS_SEMILLA]
+}
+
+function guardarAccesos(accesos) {
+  localStorage.setItem(LS_ACCESOS, JSON.stringify(accesos))
 }
 
 const ENCUESTAS_SEMILLA = [
@@ -320,6 +351,10 @@ export function crearSupabaseDemo() {
   const siguienteIdPregunta = {
     valor: Math.max(0, ...preguntas.map((p) => p.id ?? 0)) + 1,
   }
+  const accesos = cargarAccesos()
+  const siguienteIdAcceso = {
+    valor: Math.max(0, ...accesos.map((a) => a.id ?? 0)) + 1,
+  }
 
   return {
     auth: crearAuth(),
@@ -331,6 +366,12 @@ export function crearSupabaseDemo() {
         return crearConsulta(preguntas, {
           persistir: guardarPreguntasDemo,
           siguienteId: siguienteIdPregunta,
+        })
+      }
+      if (tabla === 'sesiones') {
+        return crearConsulta(accesos, {
+          persistir: guardarAccesos,
+          siguienteId: siguienteIdAcceso,
         })
       }
       return crearConsulta([])

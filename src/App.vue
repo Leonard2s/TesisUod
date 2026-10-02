@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from './lib/supabaseClient'
+import { registrarAcceso, registrarSalida } from './lib/auditoria'
 import AppNavbar from './components/AppNavbar.vue'
 
 const session = ref(null)
@@ -11,7 +12,11 @@ onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   session.value = data.session
 
-  supabase.auth.onAuthStateChange((_event, nuevaSession) => {
+  supabase.auth.onAuthStateChange((evento, nuevaSession) => {
+    // Auditoría de accesos (pantalla "Accesos")
+    if (evento === 'SIGNED_IN' && nuevaSession?.user) registrarAcceso(nuevaSession.user)
+    if (evento === 'SIGNED_OUT' && session.value?.user) registrarSalida(session.value.user)
+
     session.value = nuevaSession
     if (!nuevaSession) router.push({ name: 'login' })
   })

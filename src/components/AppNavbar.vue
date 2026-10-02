@@ -51,6 +51,13 @@ async function cerrarSesion() {
           Papelera
         </router-link>
         <router-link
+          :to="{ name: 'accesos' }"
+          active-class="bg-teal-50 text-teal-700"
+          class="rounded-lg px-3 py-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+        >
+          Accesos
+        </router-link>
+        <router-link
           :to="{ name: 'configuracion' }"
           active-class="bg-teal-50 text-teal-700"
           class="rounded-lg px-3 py-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"

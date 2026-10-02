@@ -102,6 +102,42 @@ create policy "actualizacion preguntas autenticados"
   on public.preguntas for update
   to authenticated using (true) with check (true);
 
+-- Historial de accesos (auditoría): una fila por inicio de sesión.
+-- Si ya tenías datos, ejecuta supabase/migracion-sesiones.sql (idempotente).
+create table if not exists public.sesiones (
+  id          bigint generated always as identity primary key,
+  correo      text not null,
+  nombre      text,                    -- nombre completo (de los datos del usuario)
+  matricula   text,                    -- matrícula (de los datos del usuario)
+  inicio      timestamptz not null default now(),
+  fin         timestamptz,             -- null = sesión sin cerrar
+  created_at  timestamptz not null default now()
+);
+
+alter table public.sesiones enable row level security;
+
+drop policy if exists "lectura sesiones autenticados" on public.sesiones;
+drop policy if exists "insercion sesiones propias" on public.sesiones;
+drop policy if exists "actualizacion sesiones propias" on public.sesiones;
+
+-- El historial de accesos es visible para cualquier usuario autenticado
+create policy "lectura sesiones autenticados"
+  on public.sesiones for select
+  to authenticated using (true);
+
+-- Cada usuario solo puede registrar sesiones de su propio correo
+create policy "insercion sesiones propias"
+  on public.sesiones for insert
+  to authenticated
+  with check (auth.jwt() ->> 'email' = correo);
+
+-- Y solo puede actualizar (cerrar) sus propias sesiones
+create policy "actualizacion sesiones propias"
+  on public.sesiones for update
+  to authenticated
+  using (auth.jwt() ->> 'email' = correo)
+  with check (auth.jwt() ->> 'email' = correo);
+
 -- Seed inicial de preguntas: las 8 del cuestionario de la tesis
 insert into public.preguntas (clave, titulo, etiqueta, tipo, opciones, orden) values
   ('frecuencia_automedicacion', '¿Con qué frecuencia se automedica?', 'Frecuencia de automedicación', 'unica',
