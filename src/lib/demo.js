@@ -10,6 +10,8 @@ const LS_ENCUESTAS = 'tesis-uod:encuestas'
 const LS_PREGUNTAS = 'tesis-uod:preguntas'
 const LS_USUARIOS = 'tesis-uod:usuarios'
 const LS_ACCESOS = 'tesis-uod:accesos'
+const LS_AUDITORIA = 'tesis-uod:auditoria'
+const LS_LISTA_USUARIOS = 'tesis-uod:lista-usuarios'
 
 // Las 8 preguntas del cuestionario (igual que el seed de Supabase)
 const PREGUNTAS_SEMILLA = [
@@ -110,6 +112,66 @@ function cargarAccesos() {
 
 function guardarAccesos(accesos) {
   localStorage.setItem(LS_ACCESOS, JSON.stringify(accesos))
+}
+
+// Actividad de ejemplo para la pestaña Actividad (auditoría de acciones)
+const AUDITORIA_SEMILLA = [
+  {
+    id: 1, correo: 'demo@tesis-uod.local', nombre: 'Encuestadora Demo', matricula: 'demo-01',
+    accion: 'pregunta_editada', detalle: 'Editó la pregunta «Género»',
+    created_at: '2026-10-01T16:20:00Z',
+  },
+  {
+    id: 2, correo: 'demo@tesis-uod.local', nombre: 'Encuestadora Demo', matricula: 'demo-01',
+    accion: 'encuesta_creada', detalle: 'Registró una respuesta de la encuesta',
+    created_at: '2026-10-01T17:05:00Z',
+  },
+  {
+    id: 3, correo: 'ayudante@tesis-uod.local', nombre: 'Ayudante Demo', matricula: 'demo-02',
+    accion: 'exportacion', detalle: 'Exportó los datos a PDF',
+    created_at: '2026-10-01T18:30:00Z',
+  },
+]
+
+function cargarAuditoria() {
+  try {
+    const guardadas = JSON.parse(localStorage.getItem(LS_AUDITORIA) || 'null')
+    if (Array.isArray(guardadas)) return guardadas
+  } catch {
+    // localStorage corrupto: se reinicia con la semilla
+  }
+  return [...AUDITORIA_SEMILLA]
+}
+
+function guardarAuditoria(auditoria) {
+  localStorage.setItem(LS_AUDITORIA, JSON.stringify(auditoria))
+}
+
+// Usuarios registrados de ejemplo (en la app real los sincroniza un
+// trigger desde Supabase Auth)
+const LISTA_USUARIOS_SEMILLA = [
+  {
+    id: 'u-demo-1', correo: 'demo@tesis-uod.local', nombre: 'Encuestadora Demo',
+    matricula: 'demo-01', created_at: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'u-demo-2', correo: 'ayudante@tesis-uod.local', nombre: 'Ayudante Demo',
+    matricula: 'demo-02', created_at: '2026-09-05T09:00:00Z',
+  },
+]
+
+function cargarListaUsuarios() {
+  try {
+    const guardados = JSON.parse(localStorage.getItem(LS_LISTA_USUARIOS) || 'null')
+    if (Array.isArray(guardados)) return guardados
+  } catch {
+    // localStorage corrupto: se reinicia con la semilla
+  }
+  return [...LISTA_USUARIOS_SEMILLA]
+}
+
+function guardarListaUsuarios(usuarios) {
+  localStorage.setItem(LS_LISTA_USUARIOS, JSON.stringify(usuarios))
 }
 
 const ENCUESTAS_SEMILLA = [
@@ -214,7 +276,7 @@ function guardarUsuarios(usuarios) {
   localStorage.setItem(LS_USUARIOS, JSON.stringify(usuarios))
 }
 
-function crearAuth() {
+function crearAuth({ listaUsuarios = [], persistirLista = null } = {}) {
   const listeners = new Set()
   let sesion = null
   try {
@@ -224,6 +286,27 @@ function crearAuth() {
   }
 
   const notificar = (evento) => listeners.forEach((cb) => cb(evento, sesion))
+
+  // Refleja un usuario en la lista de registrados (como el trigger de
+  // Supabase Auth en la app real)
+  const reflejarEnLista = (user) => {
+    const meta = user?.user_metadata ?? {}
+    const existente = listaUsuarios.find((u) => u.correo === user.email)
+    if (existente) {
+      existente.nombre =
+        [meta.nombre, meta.apellido].filter(Boolean).join(' ') || existente.nombre
+      existente.matricula = meta.matricula || existente.matricula
+    } else {
+      listaUsuarios.push({
+        id: 'u-' + (user.email || Math.random()).replace(/[^a-z0-9]/gi, ''),
+        correo: user.email,
+        nombre: [meta.nombre, meta.apellido].filter(Boolean).join(' ') || null,
+        matricula: meta.matricula || null,
+        created_at: new Date().toISOString(),
+      })
+    }
+    persistirLista?.(listaUsuarios)
+  }
 
   return {
     async getSession() {
@@ -244,6 +327,7 @@ function crearAuth() {
       const user = { email, user_metadata: options?.data || {} }
       usuarios[email] = { password, user }
       guardarUsuarios(usuarios)
+      reflejarEnLista(user)
       return { data: { user, session: null }, error: null }
     },
     async signInWithPassword({ email, password }) {
@@ -260,6 +344,26 @@ function crearAuth() {
       cookieStorage.setItem(COOKIE_SESION, JSON.stringify(sesion))
       notificar('SIGNED_IN')
       return { data: { session: sesion }, error: null }
+    },
+    // Actualiza los datos del usuario (perfil) y su contraseña, como
+    // el updateUser de Supabase
+    async updateUser({ password, data } = {}) {
+      if (!sesion) {
+        return { data: { user: null }, error: { message: 'No hay sesión activa' } }
+      }
+      const usuarios = cargarUsuarios()
+      const registrado = usuarios[sesion.user.email]
+      const user = registrado?.user || sesion.user
+      if (data) user.user_metadata = { ...(user.user_metadata || {}), ...data }
+      if (password && registrado) {
+        usuarios[sesion.user.email] = { password, user }
+        guardarUsuarios(usuarios)
+      }
+      sesion.user = user
+      cookieStorage.setItem(COOKIE_SESION, JSON.stringify(sesion))
+      reflejarEnLista(user)
+      notificar('USER_UPDATED')
+      return { data: { user }, error: null }
     },
     async signOut() {
       sesion = null
@@ -355,9 +459,14 @@ export function crearSupabaseDemo() {
   const siguienteIdAcceso = {
     valor: Math.max(0, ...accesos.map((a) => a.id ?? 0)) + 1,
   }
+  const auditoria = cargarAuditoria()
+  const siguienteIdAuditoria = {
+    valor: Math.max(0, ...auditoria.map((a) => a.id ?? 0)) + 1,
+  }
+  const listaUsuarios = cargarListaUsuarios()
 
   return {
-    auth: crearAuth(),
+    auth: crearAuth({ listaUsuarios, persistirLista: guardarListaUsuarios }),
     from(tabla) {
       if (tabla === 'encuestas') {
         return crearConsulta(encuestas, { persistir: guardarEncuestas, siguienteId })
@@ -373,6 +482,15 @@ export function crearSupabaseDemo() {
           persistir: guardarAccesos,
           siguienteId: siguienteIdAcceso,
         })
+      }
+      if (tabla === 'auditoria') {
+        return crearConsulta(auditoria, {
+          persistir: guardarAuditoria,
+          siguienteId: siguienteIdAuditoria,
+        })
+      }
+      if (tabla === 'usuarios') {
+        return crearConsulta(listaUsuarios, { persistir: guardarListaUsuarios })
       }
       return crearConsulta([])
     },

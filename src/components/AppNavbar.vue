@@ -68,11 +68,13 @@ async function cerrarSesion() {
 
       <div class="ml-auto flex items-center gap-2.5">
         <span class="hidden text-xs font-medium text-slate-400 md:block">{{ email }}</span>
-        <span
-          class="grid h-8 w-8 place-items-center rounded-full bg-teal-600/10 text-xs font-bold text-teal-700"
+        <router-link
+          :to="{ name: 'perfil' }"
+          title="Mi perfil"
+          class="grid h-8 w-8 place-items-center rounded-full bg-teal-600/10 text-xs font-bold text-teal-700 transition hover:bg-teal-600/20 active:scale-95"
         >
           {{ inicial }}
-        </span>
+        </router-link>
         <button
           type="button"
           class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-95"

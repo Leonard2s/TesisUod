@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { supabase } from '../lib/supabaseClient'
 import { cargarPreguntas, slug } from '../lib/preguntas'
 import { usuarioActual } from '../lib/usuario'
+import { registrarAccion } from '../lib/auditoria'
 import { iniciarGuiaConfiguracion } from '../lib/guia'
 
 const preguntas = ref([])
@@ -156,6 +157,10 @@ async function guardar() {
     formError.value = 'No se pudo guardar: ' + error.message
     return
   }
+  registrarAccion(
+    editando.value ? 'pregunta_editada' : 'pregunta_creada',
+    (editando.value ? 'Editó' : 'Creó') + ' la pregunta «' + titulo + '»'
+  )
   modalAbierto.value = false
   await cargar()
 }
@@ -225,7 +230,9 @@ async function persistirOrden() {
   if (fallo) {
     errorMsg.value = 'No se pudo guardar el orden: ' + fallo.error.message
     await cargar()
+    return
   }
+  registrarAccion('preguntas_reordenadas', 'Reordenó las preguntas del cuestionario')
 }
 
 // ---------- Borrado lógico ----------
@@ -248,6 +255,7 @@ async function eliminar(p) {
     errorMsg.value = 'No se pudo eliminar: ' + error.message
     return
   }
+  registrarAccion('pregunta_eliminada', 'Eliminó la pregunta «' + p.titulo + '» (borrado lógico)')
   confirmandoEliminar.value = null
   await cargar()
 }
@@ -270,6 +278,7 @@ async function restaurar(p) {
     errorMsg.value = 'No se pudo restaurar: ' + error.message
     return
   }
+  registrarAccion('pregunta_restaurada', 'Restauró la pregunta «' + p.titulo + '»')
   await cargar()
 }
 

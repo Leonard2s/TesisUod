@@ -16,8 +16,9 @@ periodontitis crónica**.
 | `/datos` | Tabla de respuestas de la encuesta + formulario para registrar nuevas + exportación a Excel, PDF y Word |
 | `/estadisticas` | Resumen, medidas estadísticas, gráficas de pie y barras, y tablas de frecuencia por pregunta |
 | `/papelera` | Encuestas eliminadas (borrado lógico) con opción de restaurar |
-| `/accesos` | Historial de inicios de sesión para auditoría (quién entró, cuándo y cuánto duró) |
-| `/configuracion` | CRUD de las preguntas del cuestionario: crear, editar, reordenar, eliminar (borrado lógico) y restaurar |
+| `/accesos` | Auditoría: actividad de cada usuario (qué hace y cuándo), sesiones y usuarios registrados |
+| `/configuracion` | CRUD de las preguntas del cuestionario: crear, editar, reordenar (arrastrar), eliminar (borrado lógico) y restaurar |
+| `/perfil` | Datos del usuario (nombre, apellido, matrícula) y cambio de contraseña |
 
 ## Modo demo (desarrollo)
 
@@ -35,11 +36,12 @@ un `.env` con las claves reales, la app usa Supabase automáticamente.
    `preguntas` y `sesiones`, las políticas RLS y siembra las 8 preguntas
    del cuestionario).
 3. **Si ya tenías datos con el esquema anterior:** ejecuta también
-   `supabase/migracion-preguntas.sql` y `supabase/migracion-sesiones.sql`.
-   El primero copia tus encuestas existentes al nuevo formato (columna
-   `respuestas` jsonb) **sin borrar nada**: las columnas originales se
-   mantienen y los datos quedan intactos. El segundo crea la tabla del
-   historial de accesos (auditoría).
+   `supabase/migracion-preguntas.sql`, `supabase/migracion-sesiones.sql`
+   y `supabase/migracion-auditoria.sql`. El primero copia tus encuestas
+   existentes al nuevo formato (columna `respuestas` jsonb) **sin borrar
+   nada**: las columnas originales se mantienen y los datos quedan
+   intactos. Los otros crean las tablas de auditoría (sesiones, acciones
+   y usuarios registrados, con backfill de las cuentas existentes).
 4. **Crear un usuario:** en *Authentication → Users → Add user*, registra el
    correo y contraseña con los que entrarás a la app.
 5. **Variables de entorno:**
@@ -84,13 +86,14 @@ src/
   lib/cookieStorage.js     Sesión guardada en cookies
   lib/preguntas.js        Servicio de preguntas del cuestionario
   lib/usuario.js          Usuario autenticado (auditoría)
-  lib/auditoria.js        Registro de inicios/cierres de sesión
+  lib/auditoria.js        Registro de accesos, sesiones y acciones
   lib/exportar.js         Exportación a Excel, PDF y Word
   router/index.js         Rutas + guard de autenticación
   components/             Navbar, PieChart, BarChart
-  views/                  Login, Registro, Datos, Estadísticas, Papelera, Accesos, Configuración
+  views/                  Login, Registro, Datos, Estadísticas, Papelera, Accesos, Configuración, Perfil
 supabase/schema.sql       Tablas, políticas RLS y seeds
 supabase/migracion-preguntas.sql  Migra datos existentes al formato nuevo (sin perder nada)
-supabase/migracion-sesiones.sql  Crea la tabla de accesos (auditoría)
+supabase/migracion-sesiones.sql  Crea la tabla de sesiones (auditoría de accesos)
+supabase/migracion-auditoria.sql Crea tablas de acciones y usuarios registrados
 supabase/seed.sql         Datos de prueba para encuestas
 ```

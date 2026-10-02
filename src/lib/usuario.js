@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 
-// Nombre y matrícula del usuario autenticado (para auditoría de
-// registros y eliminaciones). Igual que hace DatosView.
+// Datos del usuario autenticado (para auditoría de registros, acciones
+// y pantallas de perfil). Igual que hace DatosView.
 export async function usuarioActual() {
   const {
     data: { session },
@@ -10,5 +10,6 @@ export async function usuarioActual() {
   return {
     nombre: [meta.nombre, meta.apellido].filter(Boolean).join(' ') || '—',
     matricula: meta.matricula || session?.user?.email?.split('@')[0] || '—',
+    correo: session?.user?.email ?? '—',
   }
 }

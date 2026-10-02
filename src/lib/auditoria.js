@@ -1,8 +1,13 @@
 import { supabase } from './supabaseClient'
+import { usuarioActual } from './usuario'
 
 // Auditoría de accesos: cada inicio de sesión deja una fila en la tabla
 // `sesiones` (correo, nombre, matrícula, hora de entrada) y al cerrar
 // sesión se completa la hora de salida. Se ve en la pantalla "Accesos".
+//
+// Además, registrarAccion deja constancia en la tabla `auditoria` de qué
+// hace cada usuario y cuándo lo hace (crear/editar/eliminar encuestas y
+// preguntas, reordenar, exportar…).
 
 // Evita registrar un acceso duplicado si el evento de inicio de sesión
 // se repite en menos de un minuto (p. ej. recargas de la página)
@@ -70,5 +75,23 @@ export async function registrarSalida(user) {
     }
   } catch (e) {
     console.warn('No se pudo registrar la salida:', e)
+  }
+}
+
+// Registra una acción en la auditoría de actividad (tabla `auditoria`):
+// qué hizo el usuario y cuándo. Se llama tras completar la acción; si
+// falla no interrumpe la operación, solo deja constancia en consola.
+// Códigos usados: encuesta_creada, encuesta_eliminada, encuesta_restaurada,
+// pregunta_creada, pregunta_editada, pregunta_eliminada,
+// pregunta_restaurada, preguntas_reordenadas, exportacion.
+export async function registrarAccion(accion, detalle) {
+  try {
+    const { correo, nombre, matricula } = await usuarioActual()
+    const { error } = await supabase
+      .from('auditoria')
+      .insert({ correo, nombre, matricula, accion, detalle })
+    if (error) throw error
+  } catch (e) {
+    console.warn('No se pudo registrar la acción en la auditoría:', e)
   }
 }

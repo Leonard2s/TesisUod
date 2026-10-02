@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { supabase } from '../lib/supabaseClient'
 import { cargarPreguntas, etiquetaDe } from '../lib/preguntas'
 import { usuarioActual } from '../lib/usuario'
+import { registrarAccion } from '../lib/auditoria'
 import { exportarExcel, exportarPDF, exportarWord } from '../lib/exportar'
 
 const preguntas = ref([])
@@ -148,6 +149,7 @@ async function eliminarRegistro() {
     errorMsg.value = 'No se pudo eliminar: ' + error.message
     return
   }
+  registrarAccion('encuesta_eliminada', 'Eliminó la respuesta #' + detalle.value.id)
   detalle.value = null
   await cargar()
 }
@@ -206,6 +208,8 @@ async function guardar() {
     return
   }
 
+  registrarAccion('encuesta_creada', 'Registró una respuesta de la encuesta')
+
   paso.value = 0
   direccion.value = 'slide-izq'
   guardado.value = true
@@ -232,6 +236,10 @@ async function exportar(tipo) {
     if (tipo === 'excel') await exportarExcel(encuestas.value, preguntas.value)
     else if (tipo === 'pdf') await exportarPDF(encuestas.value, preguntas.value)
     else await exportarWord(encuestas.value, preguntas.value)
+    registrarAccion(
+      'exportacion',
+      'Exportó los datos a ' + (tipo === 'excel' ? 'Excel' : tipo === 'pdf' ? 'PDF' : 'Word')
+    )
   } catch (e) {
     errorMsg.value = 'No se pudo exportar: ' + (e.message ?? e)
   } finally {

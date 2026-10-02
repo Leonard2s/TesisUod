@@ -138,6 +138,82 @@ create policy "actualizacion sesiones propias"
   using (auth.jwt() ->> 'email' = correo)
   with check (auth.jwt() ->> 'email' = correo);
 
+-- Auditoría de actividad: qué hace cada usuario y cuándo. Si ya tenías
+-- datos, ejecuta supabase/migracion-auditoria.sql (idempotente).
+create table if not exists public.auditoria (
+  id          bigint generated always as identity primary key,
+  correo      text not null,
+  nombre      text,
+  matricula   text,
+  accion      text not null,
+  detalle     text not null,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.auditoria enable row level security;
+
+drop policy if exists "lectura auditoria autenticados" on public.auditoria;
+drop policy if exists "insercion auditoria propia" on public.auditoria;
+
+create policy "lectura auditoria autenticados"
+  on public.auditoria for select
+  to authenticated using (true);
+
+-- Cada usuario solo puede registrar acciones de su propio correo
+create policy "insercion auditoria propia"
+  on public.auditoria for insert
+  to authenticated
+  with check (auth.jwt() ->> 'email' = correo);
+
+-- Usuarios registrados: espejo de Supabase Auth mantenido con triggers
+create table if not exists public.usuarios (
+  id          uuid primary key references auth.users(id) on delete cascade,
+  correo      text not null,
+  nombre      text,
+  matricula   text,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.usuarios enable row level security;
+
+drop policy if exists "lectura usuarios autenticados" on public.usuarios;
+
+create policy "lectura usuarios autenticados"
+  on public.usuarios for select
+  to authenticated using (true);
+
+create or replace function public.sincronizar_usuario()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.usuarios (id, correo, nombre, matricula)
+  values (
+    new.id,
+    new.email,
+    nullif(concat_ws(' ', new.raw_user_meta_data->>'nombre', new.raw_user_meta_data->>'apellido'), ''),
+    nullif(new.raw_user_meta_data->>'matricula', '')
+  )
+  on conflict (id) do update
+    set correo = excluded.correo,
+        nombre = excluded.nombre,
+        matricula = excluded.matricula;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_usuario_creado on auth.users;
+create trigger on_usuario_creado
+  after insert on auth.users
+  for each row execute function public.sincronizar_usuario();
+
+drop trigger if exists on_usuario_actualizado on auth.users;
+create trigger on_usuario_actualizado
+  after update on auth.users
+  for each row execute function public.sincronizar_usuario();
+
 -- Seed inicial de preguntas: las 8 del cuestionario de la tesis
 insert into public.preguntas (clave, titulo, etiqueta, tipo, opciones, orden) values
   ('frecuencia_automedicacion', '¿Con qué frecuencia se automedica?', 'Frecuencia de automedicación', 'unica',

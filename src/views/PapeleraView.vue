@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabaseClient'
 import { cargarPreguntas, etiquetaDe } from '../lib/preguntas'
+import { registrarAccion } from '../lib/auditoria'
 
 const eliminados = ref([])
 const preguntas = ref([])
@@ -44,6 +45,7 @@ async function restaurar(e) {
     errorMsg.value = 'No se pudo restaurar: ' + error.message
     return
   }
+  registrarAccion('encuesta_restaurada', 'Restauró la respuesta #' + e.id)
   await cargar()
 }
 
