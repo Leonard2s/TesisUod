@@ -52,12 +52,14 @@ un `.env` con las claves reales, la app usa Supabase automáticamente.
    `preguntas` y `sesiones`, las políticas RLS y siembra las 8 preguntas
    del cuestionario).
 3. **Si ya tenías datos con el esquema anterior:** ejecuta también
-   `supabase/migracion-preguntas.sql`, `supabase/migracion-sesiones.sql`
-   y `supabase/migracion-auditoria.sql`. El primero copia tus encuestas
-   existentes al nuevo formato (columna `respuestas` jsonb) **sin borrar
-   nada**: las columnas originales se mantienen y los datos quedan
-   intactos. Los otros crean las tablas de auditoría (sesiones, acciones
-   y usuarios registrados, con backfill de las cuentas existentes).
+   `supabase/migracion-preguntas.sql`, `supabase/migracion-sesiones.sql`,
+   `supabase/migracion-auditoria.sql` y `supabase/migracion-admin.sql`.
+   El primero copia tus encuestas existentes al nuevo formato (columna
+   `respuestas` jsonb) **sin borrar nada**: las columnas originales se
+   mantienen y los datos quedan intactos. Los otros crean las tablas de
+   auditoría (sesiones, acciones y usuarios registrados, con backfill de
+   las cuentas existentes) y marcan como administrador al primer usuario
+   registrado.
 4. **Crear un usuario:** en *Authentication → Users → Add user*, registra el
    correo y contraseña con los que entrarás a la app.
 5. **Variables de entorno:**
@@ -69,7 +71,17 @@ un `.env` con las claves reales, la app usa Supabase automáticamente.
    Completa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
    (están en *Project Settings → API* del dashboard).
 
-6. **Instalar y correr:**
+6. **Desplegar la función Edge** (para eliminar usuarios desde la app):
+
+   ```bash
+   supabase functions deploy borrar-usuario
+   ```
+
+   O desde el dashboard: *Edge Functions → New function* → nombre
+   `borrar-usuario` → pegar `supabase/functions/borrar-usuario/index.ts`.
+   Solo los administradores (el primer usuario registrado) pueden usarla.
+
+7. **Instalar y correr:**
 
    ```bash
    npm install
@@ -111,5 +123,7 @@ supabase/schema.sql       Tablas, políticas RLS y seeds
 supabase/migracion-preguntas.sql  Migra datos existentes al formato nuevo (sin perder nada)
 supabase/migracion-sesiones.sql  Crea la tabla de sesiones (auditoría de accesos)
 supabase/migracion-auditoria.sql Crea tablas de acciones y usuarios registrados
+supabase/migracion-admin.sql Flag es_admin + primer usuario como administrador
+supabase/functions/borrar-usuario/  Función Edge para eliminar usuarios (solo admins)
 supabase/seed.sql         Datos de prueba para encuestas
 ```

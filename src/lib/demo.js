@@ -152,22 +152,36 @@ function guardarAuditoria(auditoria) {
 const LISTA_USUARIOS_SEMILLA = [
   {
     id: 'u-demo-1', correo: 'demo@tesis-uod.local', nombre: 'Encuestadora Demo',
-    matricula: 'demo-01', created_at: '2026-09-01T08:00:00Z',
+    matricula: 'demo-01', es_admin: true, created_at: '2026-09-01T08:00:00Z',
   },
   {
     id: 'u-demo-2', correo: 'ayudante@tesis-uod.local', nombre: 'Ayudante Demo',
-    matricula: 'demo-02', created_at: '2026-09-05T09:00:00Z',
+    matricula: 'demo-02', es_admin: false, created_at: '2026-09-05T09:00:00Z',
   },
 ]
 
 function cargarListaUsuarios() {
+  let lista = null
   try {
     const guardados = JSON.parse(localStorage.getItem(LS_LISTA_USUARIOS) || 'null')
-    if (Array.isArray(guardados)) return guardados
+    if (Array.isArray(guardados)) lista = guardados
   } catch {
     // localStorage corrupto: se reinicia con la semilla
   }
-  return [...LISTA_USUARIOS_SEMILLA]
+  lista ??= [...LISTA_USUARIOS_SEMILLA]
+  // Normaliza el flag y, si ninguno es admin (datos de antes de esta
+  // feature), el más antiguo queda como administrador — igual que la
+  // migración SQL
+  lista.forEach((u) => {
+    u.es_admin = u.es_admin === true
+  })
+  if (lista.length && !lista.some((u) => u.es_admin)) {
+    const primero = [...lista].sort(
+      (a, b) => new Date(a.created_at) - new Date(b.created_at)
+    )[0]
+    primero.es_admin = true
+  }
+  return lista
 }
 
 function guardarListaUsuarios(usuarios) {
@@ -302,6 +316,8 @@ function crearAuth({ listaUsuarios = [], persistirLista = null } = {}) {
         correo: user.email,
         nombre: [meta.nombre, meta.apellido].filter(Boolean).join(' ') || null,
         matricula: meta.matricula || null,
+        // El primer usuario registrado queda como administrador
+        es_admin: listaUsuarios.length === 0,
         created_at: new Date().toISOString(),
       })
     }
@@ -464,9 +480,42 @@ export function crearSupabaseDemo() {
     valor: Math.max(0, ...auditoria.map((a) => a.id ?? 0)) + 1,
   }
   const listaUsuarios = cargarListaUsuarios()
+  const auth = crearAuth({ listaUsuarios, persistirLista: guardarListaUsuarios })
 
   return {
-    auth: crearAuth({ listaUsuarios, persistirLista: guardarListaUsuarios }),
+    auth,
+    // Simula la función Edge «borrar-usuario»: valida que quien llama
+    // sea administrador y que no se elimine a sí mismo
+    functions: {
+      async invoke(nombre, { body } = {}) {
+        const fallo = (mensaje) => ({
+          data: null,
+          error: { message: mensaje, context: { json: async () => ({ error: mensaje }) } },
+        })
+        if (nombre !== 'borrar-usuario') {
+          return fallo(`Función «${nombre}» no existe en el modo demo`)
+        }
+        const { data: sesionData } = await auth.getSession()
+        const correoActual = sesionData?.session?.user?.email
+        const actual = listaUsuarios.find((u) => u.correo === correoActual)
+        if (!actual?.es_admin) {
+          return fallo('Solo un administrador puede eliminar usuarios')
+        }
+        const objetivo = listaUsuarios.find((u) => u.id === body?.id)
+        if (!objetivo) return fallo('Usuario no encontrado')
+        if (objetivo.id === actual.id) {
+          return fallo('No puedes eliminar tu propia cuenta')
+        }
+        listaUsuarios.splice(listaUsuarios.indexOf(objetivo), 1)
+        guardarListaUsuarios(listaUsuarios)
+        const usuarios = cargarUsuarios()
+        if (usuarios[objetivo.correo]) {
+          delete usuarios[objetivo.correo]
+          guardarUsuarios(usuarios)
+        }
+        return { data: { ok: true }, error: null }
+      },
+    },
     from(tabla) {
       if (tabla === 'encuestas') {
         return crearConsulta(encuestas, { persistir: guardarEncuestas, siguienteId })

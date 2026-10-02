@@ -165,12 +165,14 @@ create policy "insercion auditoria propia"
   to authenticated
   with check (auth.jwt() ->> 'email' = correo);
 
--- Usuarios registrados: espejo de Supabase Auth mantenido con triggers
+-- Usuarios registrados: espejo de Supabase Auth mantenido con triggers.
+-- El primer usuario registrado queda como administrador (es_admin).
 create table if not exists public.usuarios (
   id          uuid primary key references auth.users(id) on delete cascade,
   correo      text not null,
   nombre      text,
   matricula   text,
+  es_admin    boolean not null default false,
   created_at  timestamptz not null default now()
 );
 
@@ -189,12 +191,14 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.usuarios (id, correo, nombre, matricula)
+  insert into public.usuarios (id, correo, nombre, matricula, es_admin)
   values (
     new.id,
     new.email,
     nullif(concat_ws(' ', new.raw_user_meta_data->>'nombre', new.raw_user_meta_data->>'apellido'), ''),
-    nullif(new.raw_user_meta_data->>'matricula', '')
+    nullif(new.raw_user_meta_data->>'matricula', ''),
+    -- el primer usuario registrado queda como administrador
+    not exists (select 1 from public.usuarios)
   )
   on conflict (id) do update
     set correo = excluded.correo,

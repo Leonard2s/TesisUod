@@ -57,8 +57,13 @@ create table if not exists public.usuarios (
   correo      text not null,
   nombre      text,
   matricula   text,
+  es_admin    boolean not null default false,
   created_at  timestamptz not null default now()
 );
+
+-- Si la tabla ya existía sin la columna (script anterior):
+alter table public.usuarios
+  add column if not exists es_admin boolean not null default false;
 
 alter table public.usuarios enable row level security;
 
@@ -69,7 +74,8 @@ create policy "lectura usuarios autenticados"
   to authenticated using (true);
 
 -- Trigger que mantiene la tabla sincronizada con Supabase Auth
--- (corre como postgres y no le afecta el RLS)
+-- (corre como postgres y no le afecta el RLS). El primer usuario
+-- registrado queda como administrador.
 create or replace function public.sincronizar_usuario()
 returns trigger
 language plpgsql
@@ -77,12 +83,13 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.usuarios (id, correo, nombre, matricula)
+  insert into public.usuarios (id, correo, nombre, matricula, es_admin)
   values (
     new.id,
     new.email,
     nullif(concat_ws(' ', new.raw_user_meta_data->>'nombre', new.raw_user_meta_data->>'apellido'), ''),
-    nullif(new.raw_user_meta_data->>'matricula', '')
+    nullif(new.raw_user_meta_data->>'matricula', ''),
+    not exists (select 1 from public.usuarios)
   )
   on conflict (id) do update
     set correo = excluded.correo,

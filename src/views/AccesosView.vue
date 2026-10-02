@@ -1,14 +1,21 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabaseClient'
+import { registrarAccion } from '../lib/auditoria'
 
 const sesiones = ref([])
 const acciones = ref([])
 const usuarios = ref([])
 const cargando = ref(true)
 const errorMsg = ref('')
+const okMsg = ref('')
 const pestana = ref('actividad') // actividad | sesiones | usuarios
 const filtroCorreo = ref('')
+const correoActual = ref('')
+
+// Eliminación de usuarios (solo administradores)
+const confirmandoEliminarUsuario = ref(null) // id del usuario en confirmación
+const eliminandoUsuario = ref(false)
 
 // Etiquetas y colores de cada tipo de acción para la pestaña Actividad
 const ETIQUETAS_ACCION = {
@@ -24,11 +31,19 @@ const ETIQUETAS_ACCION = {
   preguntas_reordenadas: { texto: 'Orden', clase: 'bg-amber-50 text-amber-700' },
   exportacion: { texto: 'Exportación', clase: 'bg-emerald-50 text-emerald-600' },
   importacion: { texto: 'Importación', clase: 'bg-cyan-50 text-cyan-700' },
+  usuario_eliminado: { texto: 'Usuario', clase: 'bg-rose-50 text-rose-600' },
 }
 
 async function cargar() {
   cargando.value = true
   errorMsg.value = ''
+
+  // Quién está mirando la pantalla (para saber si es administrador)
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  correoActual.value = session?.user?.email ?? ''
+
   const [resSesiones, resAcciones, resUsuarios] = await Promise.all([
     supabase.from('sesiones').select('*').order('inicio', { ascending: false }),
     supabase.from('auditoria').select('*').order('created_at', { ascending: false }).limit(200),
@@ -132,6 +147,49 @@ function etiquetaAccion(accion) {
   return ETIQUETAS_ACCION[accion] ?? { texto: 'Acción', clase: 'bg-slate-100 text-slate-500' }
 }
 
+// ---------- Eliminar usuarios (solo administradores) ----------
+const soyAdmin = computed(() =>
+  usuarios.value.some((u) => u.correo === correoActual.value && u.es_admin)
+)
+
+function esPropio(u) {
+  return u.correo === correoActual.value
+}
+
+async function eliminarUsuario(u) {
+  eliminandoUsuario.value = true
+  errorMsg.value = ''
+  okMsg.value = ''
+
+  const { data, error } = await supabase.functions.invoke('borrar-usuario', {
+    body: { id: u.id },
+  })
+
+  // El mensaje de la función viene en el cuerpo de la respuesta
+  let mensaje = null
+  if (error) {
+    try {
+      mensaje = (await error.context?.json?.())?.error ?? null
+    } catch {
+      mensaje = null
+    }
+    mensaje ??= error.message || 'revisa que la función «borrar-usuario» esté desplegada en Supabase'
+  } else if (data?.ok !== true) {
+    mensaje = data?.error || 'respuesta inesperada de la función'
+  }
+
+  eliminandoUsuario.value = false
+  if (mensaje) {
+    errorMsg.value = 'No se pudo eliminar: ' + mensaje
+    return
+  }
+
+  registrarAccion('usuario_eliminado', 'Eliminó al usuario ' + (u.nombre ?? u.correo))
+  okMsg.value = 'Usuario eliminado. Su historial de accesos y actividad se conserva como evidencia.'
+  confirmandoEliminarUsuario.value = null
+  await cargar()
+}
+
 function fechaHora(iso) {
   return new Date(iso).toLocaleString('es-DO', {
     day: '2-digit',
@@ -194,6 +252,12 @@ onMounted(cargar)
       class="mb-4 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-600"
     >
       {{ errorMsg }}
+    </p>
+    <p
+      v-if="okMsg"
+      class="mb-4 rounded-xl bg-teal-50 px-3.5 py-2.5 text-xs font-medium text-teal-700"
+    >
+      {{ okMsg }}
     </p>
 
     <!-- Pestañas + filtro -->
@@ -416,12 +480,18 @@ onMounted(cargar)
         class="card anim-aparecer mb-4 border-amber-200/70 bg-amber-50/60 !p-4"
         style="animation-delay: 60ms"
       >
-        <p class="text-[13px] font-semibold text-amber-800">¿Cómo elimino un usuario?</p>
+        <p class="text-[13px] font-semibold text-amber-800">Eliminar usuarios</p>
         <p class="mt-1 text-[13px] leading-relaxed text-amber-700">
-          Por seguridad solo se puede hacer desde Supabase:
-          <span class="font-semibold">Dashboard → Authentication → Users → menú ⋯ del usuario → Delete user</span>.
-          Al borrarlo, la persona ya no podrá iniciar sesión; su fila de esta lista desaparece, pero el
-          historial de accesos y actividad se conserva como evidencia de auditoría.
+          <template v-if="soyAdmin">
+            Como administrador puedes eliminar usuarios con el icono de basura. La cuenta se borra de
+            forma permanente de Supabase Auth, pero su historial de accesos y actividad se conserva
+            como evidencia. Tu propia cuenta no se puede eliminar desde aquí.
+          </template>
+          <template v-else>
+            Solo los administradores pueden eliminar usuarios (el primer usuario registrado queda
+            como administrador). También puede hacerse desde Supabase:
+            <span class="font-semibold">Dashboard → Authentication → Users → menú ⋯ → Delete user</span>.
+          </template>
         </p>
       </div>
 
@@ -445,18 +515,61 @@ onMounted(cargar)
                 <th class="th">Matrícula</th>
                 <th class="th">Registrado</th>
                 <th class="th">Último acceso</th>
+                <th v-if="soyAdmin" class="th">Eliminar</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               <tr v-for="u in usuarios" :key="u.id" class="transition-colors hover:bg-teal-50/40">
                 <td class="td">
-                  <p class="text-[13px] font-medium text-slate-700">{{ u.nombre ?? '—' }}</p>
+                  <p class="text-[13px] font-medium text-slate-700">
+                    {{ u.nombre ?? '—' }}
+                    <span
+                      v-if="u.es_admin"
+                      class="ml-1.5 rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-semibold text-teal-700"
+                    >
+                      Admin
+                    </span>
+                  </p>
                   <p class="text-[11px] text-slate-400">{{ u.correo }}</p>
                 </td>
                 <td class="td whitespace-nowrap">{{ u.matricula ?? '—' }}</td>
                 <td class="td whitespace-nowrap">{{ fecha(u.created_at) }}</td>
                 <td class="td whitespace-nowrap tabular-nums">
                   {{ fechaHora(ultimoAcceso[u.correo]) ?? 'Nunca' }}
+                </td>
+                <td v-if="soyAdmin" class="td whitespace-nowrap">
+                  <span v-if="esPropio(u)" class="text-[11px] text-slate-300" title="Es tu propia cuenta">
+                    Tú
+                  </span>
+                  <div v-else-if="confirmandoEliminarUsuario === u.id" class="flex items-center gap-1.5">
+                    <span class="text-xs font-medium text-slate-500">¿Seguro?</span>
+                    <button
+                      type="button"
+                      class="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 active:scale-95 disabled:opacity-60"
+                      :disabled="eliminandoUsuario"
+                      @click="eliminarUsuario(u)"
+                    >
+                      {{ eliminandoUsuario ? 'Eliminando…' : 'Sí' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50 active:scale-95"
+                      @click="confirmandoEliminarUsuario = null"
+                    >
+                      No
+                    </button>
+                  </div>
+                  <button
+                    v-else
+                    type="button"
+                    class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 active:scale-95"
+                    title="Eliminar usuario"
+                    @click="confirmandoEliminarUsuario = u.id"
+                  >
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    </svg>
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -472,9 +585,28 @@ onMounted(cargar)
               {{ (u.nombre || u.correo || '?').trim().charAt(0).toUpperCase() }}
             </span>
             <div class="min-w-0">
-              <p class="truncate text-[14px] font-semibold text-slate-700">{{ u.nombre ?? '—' }}</p>
+              <p class="truncate text-[14px] font-semibold text-slate-700">
+                {{ u.nombre ?? '—' }}
+                <span
+                  v-if="u.es_admin"
+                  class="ml-1 rounded-full bg-teal-600/10 px-2 py-0.5 text-[10px] font-semibold text-teal-700"
+                >
+                  Admin
+                </span>
+              </p>
               <p class="truncate text-[11px] text-slate-400">{{ u.correo }}</p>
             </div>
+            <button
+              v-if="soyAdmin && !esPropio(u) && confirmandoEliminarUsuario !== u.id"
+              type="button"
+              class="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 active:scale-95"
+              title="Eliminar usuario"
+              @click="confirmandoEliminarUsuario = u.id"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              </svg>
+            </button>
           </div>
           <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-[11px]">
             <div>
@@ -490,6 +622,29 @@ onMounted(cargar)
               <p class="mt-0.5 text-[13px] font-medium text-slate-700">
                 {{ fechaHora(ultimoAcceso[u.correo]) ?? 'Nunca' }}
               </p>
+            </div>
+          </div>
+          <div
+            v-if="soyAdmin && !esPropio(u) && confirmandoEliminarUsuario === u.id"
+            class="mt-3 flex items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2"
+          >
+            <span class="text-xs font-medium text-rose-700">¿Eliminar este usuario?</span>
+            <div class="flex gap-1.5">
+              <button
+                type="button"
+                class="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 active:scale-95 disabled:opacity-60"
+                :disabled="eliminandoUsuario"
+                @click="eliminarUsuario(u)"
+              >
+                {{ eliminandoUsuario ? 'Eliminando…' : 'Sí' }}
+              </button>
+              <button
+                type="button"
+                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50 active:scale-95"
+                @click="confirmandoEliminarUsuario = null"
+              >
+                No
+              </button>
             </div>
           </div>
         </div>
