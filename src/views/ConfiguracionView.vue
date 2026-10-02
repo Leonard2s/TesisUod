@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { supabase } from '../lib/supabaseClient'
 import { cargarPreguntas, slug } from '../lib/preguntas'
 import { usuarioActual } from '../lib/usuario'
+import { iniciarGuiaConfiguracion } from '../lib/guia'
 
 const preguntas = ref([])
 const eliminadas = ref([])
@@ -249,8 +250,16 @@ onUnmounted(() => {
   window.removeEventListener('keydown', alPresionarTecla)
 })
 
-onMounted(() => {
-  cargar()
+// La guía paso a paso se muestra sola solo la primera vez que se
+// visita la pantalla; luego queda disponible con el botón «?»
+const CLAVE_GUIA_VISTA = 'tesis-uod:guia-configuracion-vista'
+
+onMounted(async () => {
+  await cargar()
+  if (!localStorage.getItem(CLAVE_GUIA_VISTA)) {
+    localStorage.setItem(CLAVE_GUIA_VISTA, '1')
+    iniciarGuiaConfiguracion()
+  }
   window.addEventListener('keydown', alPresionarTecla)
 })
 </script>
@@ -265,12 +274,28 @@ onMounted(() => {
           orden y elimínalas (con borrado lógico, se pueden restaurar).
         </p>
       </div>
-      <button type="button" class="btn-primary" :disabled="cargando" @click="abrirNueva">
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Nueva pregunta
-      </button>
+      <div class="flex items-center gap-2.5">
+        <button
+          type="button"
+          class="btn-outline !px-3"
+          title="Guía paso a paso"
+          @click="iniciarGuiaConfiguracion()"
+        >
+          <span class="text-base font-bold leading-none">?</span>
+        </button>
+        <button
+          type="button"
+          class="btn-primary"
+          data-guia="nueva"
+          :disabled="cargando"
+          @click="abrirNueva"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Nueva pregunta
+        </button>
+      </div>
     </div>
 
     <p
@@ -300,6 +325,7 @@ onMounted(() => {
         <div
           v-for="(p, i) in preguntas"
           :key="p.id"
+          :data-guia="i === 0 ? 'pregunta' : null"
           class="flex flex-col gap-3 border-b border-slate-100 p-4 last:border-0 sm:flex-row sm:items-center sm:gap-4"
         >
           <!-- Número + controles de orden -->
@@ -307,7 +333,7 @@ onMounted(() => {
             <span class="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-teal-600/10 text-sm font-bold text-teal-700">
               {{ i + 1 }}
             </span>
-            <div class="flex gap-1">
+            <div class="flex gap-1" :data-guia="i === 0 ? 'orden' : null">
               <button
                 type="button"
                 class="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
@@ -359,6 +385,7 @@ onMounted(() => {
                 type="button"
                 class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-600 active:scale-95"
                 title="Editar"
+                :data-guia="i === 0 ? 'editar' : null"
                 @click="abrirEditar(p)"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -369,6 +396,7 @@ onMounted(() => {
                 type="button"
                 class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 active:scale-95"
                 title="Eliminar"
+                :data-guia="i === 0 ? 'eliminar' : null"
                 @click="confirmandoEliminar = p.id"
               >
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -417,6 +445,7 @@ onMounted(() => {
         <button
           type="button"
           class="btn-outline !px-4 !py-2 text-xs"
+          data-guia="eliminadas"
           @click="mostrarEliminadas = !mostrarEliminadas"
         >
           <svg
